@@ -490,11 +490,11 @@ canvas.graph {
 
 #carPositionLabel {
   position: absolute;
-  top: -1.2rem;
+  top: -3.2rem;
   left: 50%;
-  z-index: 3;
+  z-index: 5;
   display: none;
-  padding: 0.2rem 0.4rem;
+  padding: 0.15rem 0.35rem;
   color: #fff;
   background: var(--text);
   font-size: 0.68rem;
