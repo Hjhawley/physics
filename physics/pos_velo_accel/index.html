@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Motion Visualizer: Position, Velocity, and Acceleration</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="./style.css" />
   </head>
 
   <body>
@@ -48,7 +48,9 @@
         <article class="graph-card position">
           <div class="graph-header">
             <h2 class="graph-title position-text">Position vs. Time</h2>
-            <span class="badge locked">Drag slider to adjust initial position</span>
+            <span class="badge locked"
+              >Drag slider to adjust initial position</span
+            >
           </div>
           <canvas
             id="positionCanvas"
@@ -186,7 +188,7 @@
           "speed-right": [0, 2, 4, 6, 8],
           "slow-right": [8, 6, 4, 2, 0],
           "speed-left": [0, -2, -4, -6, -8],
-          "slow-left": [-8, -6, -4, -2, -0],
+          "slow-left": [-8, -6, -4, -2, 0],
         };
 
         function clamp(value, min, max) {
@@ -480,7 +482,7 @@
           const { ctx, rect } = drawGraphFrame(positionCanvas, {
             yMin: POSITION_MIN,
             yMax: POSITION_MAX,
-            yTicks: [-60, -40, -20, 0, 20, 40, 60],
+            yTicks: [-40, -20, 0, 20, 40],
             yLabel: "Position (m)",
           });
 
@@ -489,14 +491,23 @@
           // rendering appear visually smooth.
           const samples = 240;
           ctx.save();
+          // Keep portions of the position curve outside ±40 m
+          // from drawing beyond the graph itself.
           ctx.beginPath();
+          ctx.rect(rect.left, rect.top, rect.width, rect.height);
+          ctx.clip();
+
+          ctx.beginPath();
+
           for (let i = 0; i <= samples; i++) {
             const t = TIME_MIN + (i / samples) * (TIME_MAX - TIME_MIN);
             const x = timeToX(t, rect);
             const y = valueToY(positionAt(t), POSITION_MIN, POSITION_MAX, rect);
+
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }
+
           ctx.strokeStyle = colors.position;
           ctx.lineWidth = 3.4;
           ctx.lineJoin = "round";
@@ -664,7 +675,7 @@
         }
 
         function buildTrackTicks() {
-          const tickValues = [-60, -40, -20, 0, 20, 40, 60];
+          const tickValues = [-40, -20, 0, 20, 40];
           for (const value of tickValues) {
             const percent =
               ((value - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100;
@@ -684,7 +695,7 @@
 
         // ANIMATION-TO-SCREEN MAPPING:
         // The car's screen position is a direct linear mapping of calculated
-        // physical position x from [-60 m, +60 m] onto [0%, 100%] of the track.
+        // physical position x from [-40 m, +40 m] onto [0%, 100%] of the track.
         // The car is never moved by velocity directly; velocity changes the
         // slope of position, and the position function moves the car.
         function updateCar(t) {
