@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Motion Visualizer: Position, Velocity, and Acceleration</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+
+  <body>
+    <main class="app">
+      <header>
+        <h1>Motion Visualizer: Position, Velocity, and Acceleration</h1>
+        <p class="subtitle">
+          Drag the green nodes to adjust velocity, and pay attention to how
+          position and acceleration respond.
+        </p>
+      </header>
+
+      <section class="toolbar" aria-label="Preset motion examples">
+        <div class="preset-area">
+          <p class="section-label">Preset Examples:</p>
+          <div class="preset-buttons">
+            <button class="preset-button" data-preset="rest">At Rest</button>
+            <button class="preset-button" data-preset="positive">
+              Constant Positive Velocity
+            </button>
+            <button class="preset-button" data-preset="negative">
+              Constant Negative Velocity
+            </button>
+            <button class="preset-button" data-preset="speed-right">
+              Speeding Up Right
+            </button>
+            <button class="preset-button" data-preset="slow-right">
+              Slowing Down Right
+            </button>
+            <button class="preset-button" data-preset="speed-left">
+              Speeding Up Left
+            </button>
+            <button class="preset-button" data-preset="slow-left">
+              Slowing Down Left
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="graphs" aria-label="Motion graphs">
+        <article class="graph-card position">
+          <div class="graph-header">
+            <h2 class="graph-title position-text">Position vs. Time</h2>
+            <span class="badge locked">Drag slider to adjust initial position</span>
+          </div>
+          <canvas
+            id="positionCanvas"
+            class="graph"
+            aria-label="Position versus time graph"
+          ></canvas>
+          <div class="xi-control">
+            <label for="xiSlider">Initial position, x<sub>i</sub></label>
+            <input
+              id="xiSlider"
+              type="range"
+              min="-20"
+              max="20"
+              step="0.5"
+              value="0"
+            />
+            <span id="xiValue">0.0 m</span>
+          </div>
+        </article>
+
+        <article class="graph-card velocity">
+          <div class="graph-header">
+            <h2 class="graph-title velocity-text">Velocity vs. Time</h2>
+            <span class="badge control">Drag nodes to adjust velocity</span>
+          </div>
+          <canvas
+            id="velocityCanvas"
+            class="graph"
+            aria-label="Interactive velocity versus time graph"
+          ></canvas>
+          <div class="graph-note">
+            Drag any green node up or down. Straight segments between nodes
+            define the velocity function.
+          </div>
+        </article>
+
+        <article class="graph-card acceleration">
+          <div class="graph-header">
+            <h2 class="graph-title acceleration-text">Acceleration vs. Time</h2>
+          </div>
+          <canvas
+            id="accelerationCanvas"
+            class="graph"
+            aria-label="Acceleration versus time graph"
+          ></canvas>
+          <div class="graph-note">
+            Acceleration is the slope of the green velocity graph, so it stays
+            constant within each 1-second interval.
+          </div>
+        </article>
+      </section>
+
+      <section
+        class="live-panel"
+        aria-label="Live motion data"
+        aria-live="polite"
+      >
+        <div class="live-item">
+          <span class="label">Time</span>
+          <span class="value" id="dataTime">0.00 s</span>
+        </div>
+        <div class="live-item position-value">
+          <span class="label">Position</span>
+          <span class="value" id="dataPosition">0.00 m</span>
+        </div>
+        <div class="live-item velocity-value">
+          <span class="label">Velocity</span>
+          <span class="value" id="dataVelocity">0.00 m/s</span>
+        </div>
+        <div class="live-item acceleration-value">
+          <span class="label">Acceleration</span>
+          <span class="value" id="dataAcceleration">0.00 m/s²</span>
+        </div>
+      </section>
+
+      <section class="motion-panel" aria-label="Motion animation">
+        <div class="motion-controls">
+          <button id="animateButton" class="control-button primary">
+            Animate Motion
+          </button>
+          <button id="pauseButton" class="control-button secondary">
+            Pause
+          </button>
+          <button id="resetAnimationButton" class="control-button secondary">
+            Reset Animation
+          </button>
+          <div class="time-readout" id="animationTime">t = 0.00 s</div>
+        </div>
+
+        <div class="motion-track">
+          <div class="track-caption">Horizontal position track</div>
+          <div class="track-axis" id="trackAxis">
+            <div id="car" aria-hidden="true">🚗</div>
+            <div id="carPositionLabel">x = 0.00 m</div>
+          </div>
+          <span class="track-side left">negative x ←</span>
+          <span class="track-side right">→ positive x</span>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        "use strict";
+
+        // Velocity nodes occur at fixed times. Students can change ONLY the
+        // velocity value at each node, never the node's time coordinate.
+        const times = [0, 1, 2, 3, 4];
+        let velocities = [0, 2, 4, 2, 0];
+        let initialPosition = 0;
+
+        const TIME_MIN = 0;
+        const TIME_MAX = 4;
+        const VELOCITY_MIN = -10;
+        const VELOCITY_MAX = 10;
+        const POSITION_MIN = -40;
+        const POSITION_MAX = 40;
+        const ACCEL_MIN = -20;
+        const ACCEL_MAX = 20;
+
+        const colors = {
+          position: "#2563eb",
+          velocity: "#16a34a",
+          acceleration: "#dc2626",
+          axis: "#4b5563",
+          grid: "#e2e8f0",
+          cursor: "#7c3aed",
+          text: "#344054",
+        };
+
+        const presets = {
+          rest: [0, 0, 0, 0, 0],
+          positive: [4, 4, 4, 4, 4],
+          negative: [-4, -4, -4, -4, -4],
+          "speed-right": [0, 2, 4, 6, 8],
+          "slow-right": [8, 6, 4, 2, 0],
+          "speed-left": [0, -2, -4, -6, -8],
+          "slow-left": [-8, -6, -4, -2, -0],
+        };
+
+        function clamp(value, min, max) {
+          return Math.max(min, Math.min(max, value));
+        }
+
+        function cleanNumber(value, decimals = 2) {
+          const rounded = Number(value.toFixed(decimals));
+          return Object.is(rounded, -0) ? 0 : rounded;
+        }
+
+        // Return the piecewise-linear interval containing time t.
+        // At t = 4 s, use the final interval (3-4 s).
+        function intervalIndexAt(t) {
+          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          if (tc >= times[times.length - 1]) return times.length - 2;
+
+          for (let i = 0; i < times.length - 1; i++) {
+            if (tc >= times[i] && tc < times[i + 1]) return i;
+          }
+          return 0;
+        }
+
+        function intervalAcceleration(i) {
+          const dt = times[i + 1] - times[i];
+          return (velocities[i + 1] - velocities[i]) / dt;
+        }
+
+        // VELOCITY INTERPOLATION:
+        // Between each pair of nodes, velocity is a straight line. This is
+        // linear interpolation, equivalently v(t) = v0 + a * (t - t0).
+        function velocityAt(t) {
+          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const i = intervalIndexAt(tc);
+          const t0 = times[i];
+          const t1 = times[i + 1];
+          const v0 = velocities[i];
+          const v1 = velocities[i + 1];
+          const fraction = (tc - t0) / (t1 - t0);
+          return v0 + (v1 - v0) * fraction;
+        }
+
+        // POSITION INTEGRATION:
+        // First accumulate completed intervals using the exact trapezoid area:
+        //   delta x = ((v1 + v2) / 2) * delta t
+        // Then integrate the current linear velocity segment analytically.
+        // Since velocity is linear inside an interval, its integral is a smooth
+        // quadratic position curve inside that interval.
+        function positionAt(t) {
+          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const i = intervalIndexAt(tc);
+          let x = initialPosition;
+
+          // Exact accumulated area for every full interval before the current one.
+          for (let k = 0; k < i; k++) {
+            const dt = times[k + 1] - times[k];
+            x += ((velocities[k] + velocities[k + 1]) / 2) * dt;
+          }
+
+          // Exact partial area inside the current interval.
+          const t0 = times[i];
+          const dtLocal = tc - t0;
+          const a = intervalAcceleration(i);
+          x += velocities[i] * dtLocal + 0.5 * a * dtLocal * dtLocal;
+
+          return x;
+        }
+
+        // ACCELERATION:
+        // Because each velocity segment is linear, acceleration is the constant
+        // slope delta-v / delta-t over that interval.
+        // At an interior velocity corner where the left and right slopes differ,
+        // the instantaneous derivative is mathematically undefined. We return
+        // null in that exact case for the live data panel.
+        function accelerationAt(t) {
+          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const epsilon = 1e-8;
+
+          for (let i = 1; i < times.length - 1; i++) {
+            if (Math.abs(tc - times[i]) < epsilon) {
+              const left = intervalAcceleration(i - 1);
+              const right = intervalAcceleration(i);
+              return Math.abs(left - right) < epsilon ? left : null;
+            }
+          }
+
+          return intervalAcceleration(intervalIndexAt(tc));
+        }
+
+        function motionAt(t) {
+          return {
+            t: clamp(t, TIME_MIN, TIME_MAX),
+            x: positionAt(t),
+            v: velocityAt(t),
+            a: accelerationAt(t),
+          };
+        }
+
+        const positionCanvas = document.getElementById("positionCanvas");
+        const velocityCanvas = document.getElementById("velocityCanvas");
+        const accelerationCanvas =
+          document.getElementById("accelerationCanvas");
+        const canvases = [positionCanvas, velocityCanvas, accelerationCanvas];
+
+        const xiSlider = document.getElementById("xiSlider");
+        const xiValue = document.getElementById("xiValue");
+
+        const dataTime = document.getElementById("dataTime");
+        const dataPosition = document.getElementById("dataPosition");
+        const dataVelocity = document.getElementById("dataVelocity");
+        const dataAcceleration = document.getElementById("dataAcceleration");
+        const animationTime = document.getElementById("animationTime");
+
+        const animateButton = document.getElementById("animateButton");
+        const pauseButton = document.getElementById("pauseButton");
+        const resetAnimationButton = document.getElementById(
+          "resetAnimationButton",
+        );
+
+        const trackAxis = document.getElementById("trackAxis");
+        const car = document.getElementById("car");
+        const carPositionLabel = document.getElementById("carPositionLabel");
+
+        const margins = {
+          left: 68,
+          right: 24,
+          top: 28,
+          bottom: 58,
+        };
+
+        let selectedTime = 0;
+        let activeVelocityNode = null;
+        let carVisible = false;
+        let lastNonzeroDirection = 1;
+
+        // Animation state.
+        let animationState = "stopped"; // stopped | playing | paused | finished
+        let animationStartWallTime = 0;
+        let animationCurrentTime = 0;
+        let animationFrameId = null;
+
+        function ensureCanvasResolution(canvas) {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const cssWidth = Math.max(1, canvas.clientWidth);
+          const cssHeight = Math.max(1, canvas.clientHeight);
+          const targetWidth = Math.round(cssWidth * dpr);
+          const targetHeight = Math.round(cssHeight * dpr);
+
+          if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+          }
+
+          const ctx = canvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          return { ctx, width: cssWidth, height: cssHeight };
+        }
+
+        function plotRect(width, height) {
+          return {
+            left: margins.left,
+            top: margins.top,
+            right: width - margins.right,
+            bottom: height - margins.bottom,
+            width: width - margins.left - margins.right,
+            height: height - margins.top - margins.bottom,
+          };
+        }
+
+        function timeToX(t, rect) {
+          return (
+            rect.left + ((t - TIME_MIN) / (TIME_MAX - TIME_MIN)) * rect.width
+          );
+        }
+
+        function valueToY(value, yMin, yMax, rect) {
+          return rect.bottom - ((value - yMin) / (yMax - yMin)) * rect.height;
+        }
+
+        function xToTime(x, rect) {
+          const fraction = (x - rect.left) / rect.width;
+          return clamp(
+            TIME_MIN + fraction * (TIME_MAX - TIME_MIN),
+            TIME_MIN,
+            TIME_MAX,
+          );
+        }
+
+        function yToValue(y, yMin, yMax, rect) {
+          const fraction = (rect.bottom - y) / rect.height;
+          return clamp(yMin + fraction * (yMax - yMin), yMin, yMax);
+        }
+
+        function pointerCanvasPosition(event, canvas) {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            x: (event.clientX - rect.left) * (canvas.clientWidth / rect.width),
+            y: (event.clientY - rect.top) * (canvas.clientHeight / rect.height),
+          };
+        }
+
+        function drawGraphFrame(canvas, options) {
+          const { ctx, width, height } = ensureCanvasResolution(canvas);
+          const rect = plotRect(width, height);
+          const { yMin, yMax, yTicks, yLabel } = options;
+
+          ctx.clearRect(0, 0, width, height);
+          ctx.save();
+          ctx.font = "13px system-ui, -apple-system, Segoe UI, sans-serif";
+          ctx.fillStyle = colors.text;
+          ctx.strokeStyle = colors.grid;
+          ctx.lineWidth = 1;
+
+          // Vertical time grid lines and tick labels.
+          for (let t = 0; t <= 4; t += 1) {
+            const x = timeToX(t, rect);
+            ctx.beginPath();
+            ctx.moveTo(x, rect.top);
+            ctx.lineTo(x, rect.bottom);
+            ctx.stroke();
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = colors.text;
+            ctx.fillText(String(t), x, rect.bottom + 10);
+          }
+
+          // Horizontal grid lines and y tick labels.
+          for (const value of yTicks) {
+            const y = valueToY(value, yMin, yMax, rect);
+            ctx.strokeStyle = Math.abs(value) < 1e-9 ? "#a5afbd" : colors.grid;
+            ctx.lineWidth = Math.abs(value) < 1e-9 ? 1.6 : 1;
+            ctx.beginPath();
+            ctx.moveTo(rect.left, y);
+            ctx.lineTo(rect.right, y);
+            ctx.stroke();
+
+            ctx.fillStyle = colors.text;
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillText(String(value), rect.left - 10, y);
+          }
+
+          // Plot border.
+          ctx.strokeStyle = "#9aa5b5";
+          ctx.lineWidth = 1.25;
+          ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+
+          // Axis labels.
+          ctx.fillStyle = "#475467";
+          ctx.font = "700 13px system-ui, -apple-system, Segoe UI, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText("Time (s)", rect.left + rect.width / 2, height - 10);
+
+          ctx.save();
+          ctx.translate(18, rect.top + rect.height / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillText(yLabel, 0, 0);
+          ctx.restore();
+
+          ctx.restore();
+          return { ctx, width, height, rect };
+        }
+
+        function drawSelectedTimeCursor(ctx, rect) {
+          const t =
+            animationState === "playing" || animationState === "paused"
+              ? animationCurrentTime
+              : selectedTime;
+          const x = timeToX(t, rect);
+
+          ctx.save();
+          ctx.strokeStyle = colors.cursor;
+          ctx.lineWidth = animationState === "playing" ? 2 : 1.5;
+          ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          ctx.moveTo(x, rect.top);
+          ctx.lineTo(x, rect.bottom);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = colors.cursor;
+          ctx.beginPath();
+          ctx.arc(x, rect.top + 2, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function drawPositionGraph() {
+          const { ctx, rect } = drawGraphFrame(positionCanvas, {
+            yMin: POSITION_MIN,
+            yMax: POSITION_MAX,
+            yTicks: [-60, -40, -20, 0, 20, 40, 60],
+            yLabel: "Position (m)",
+          });
+
+          // Sample the exact analytic integral at many small time steps. The
+          // underlying math is exact; dense sampling simply makes the Canvas
+          // rendering appear visually smooth.
+          const samples = 240;
+          ctx.save();
+          ctx.beginPath();
+          for (let i = 0; i <= samples; i++) {
+            const t = TIME_MIN + (i / samples) * (TIME_MAX - TIME_MIN);
+            const x = timeToX(t, rect);
+            const y = valueToY(positionAt(t), POSITION_MIN, POSITION_MAX, rect);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = colors.position;
+          ctx.lineWidth = 3.4;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          ctx.stroke();
+          ctx.restore();
+
+          drawSelectedTimeCursor(ctx, rect);
+        }
+
+        function drawVelocityGraph() {
+          const { ctx, rect } = drawGraphFrame(velocityCanvas, {
+            yMin: VELOCITY_MIN,
+            yMax: VELOCITY_MAX,
+            yTicks: [-10, -5, 0, 5, 10],
+            yLabel: "Velocity (m/s)",
+          });
+
+          // Connect the five fixed-time velocity nodes with straight segments.
+          ctx.save();
+          ctx.beginPath();
+          for (let i = 0; i < times.length; i++) {
+            const x = timeToX(times[i], rect);
+            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = colors.velocity;
+          ctx.lineWidth = 4;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          ctx.stroke();
+
+          // Draw draggable nodes.
+          for (let i = 0; i < times.length; i++) {
+            const x = timeToX(times[i], rect);
+            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+
+            ctx.beginPath();
+            ctx.arc(x, y, activeVelocityNode === i ? 9 : 7.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.lineWidth = activeVelocityNode === i ? 4 : 3;
+            ctx.strokeStyle = colors.velocity;
+            ctx.stroke();
+          }
+
+          // While dragging, display the numerical velocity next to that node.
+          if (activeVelocityNode !== null) {
+            const i = activeVelocityNode;
+            const x = timeToX(times[i], rect);
+            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const label = `v = ${cleanNumber(velocities[i], 1).toFixed(1)} m/s`;
+
+            ctx.font =
+              "800 13px system-ui, -apple-system, Segoe UI, sans-serif";
+            const textWidth = ctx.measureText(label).width;
+            const boxWidth = textWidth + 16;
+            const boxHeight = 27;
+            const boxX = clamp(
+              x - boxWidth / 2,
+              rect.left + 4,
+              rect.right - boxWidth - 4,
+            );
+            const preferredY = y - 39;
+            const boxY = preferredY < rect.top + 3 ? y + 16 : preferredY;
+
+            ctx.fillStyle = "rgba(20, 83, 45, 0.94)";
+            roundRectPath(ctx, boxX, boxY, boxWidth, boxHeight, 7);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(
+              label,
+              boxX + boxWidth / 2,
+              boxY + boxHeight / 2 + 0.5,
+            );
+          }
+
+          ctx.restore();
+          drawSelectedTimeCursor(ctx, rect);
+        }
+
+        function drawAccelerationGraph() {
+          const { ctx, rect } = drawGraphFrame(accelerationCanvas, {
+            yMin: ACCEL_MIN,
+            yMax: ACCEL_MAX,
+            yTicks: [-20, -10, 0, 10, 20],
+            yLabel: "Acceleration (m/s²)",
+          });
+
+          ctx.save();
+          ctx.strokeStyle = colors.acceleration;
+          ctx.lineWidth = 3.5;
+          ctx.lineCap = "round";
+
+          // Draw one horizontal segment per velocity interval.
+          for (let i = 0; i < times.length - 1; i++) {
+            const a = intervalAcceleration(i);
+            const x0 = timeToX(times[i], rect);
+            const x1 = timeToX(times[i + 1], rect);
+            const y = valueToY(a, ACCEL_MIN, ACCEL_MAX, rect);
+
+            ctx.beginPath();
+            ctx.moveTo(x0, y);
+            ctx.lineTo(x1, y);
+            ctx.stroke();
+          }
+
+          // Mark acceleration jumps at velocity corners with dashed connectors.
+          // The dashed line is only a visual step marker; acceleration is not
+          // interpolated through the jump.
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1.8;
+          ctx.globalAlpha = 0.7;
+          for (let i = 1; i < times.length - 1; i++) {
+            const leftA = intervalAcceleration(i - 1);
+            const rightA = intervalAcceleration(i);
+            if (Math.abs(leftA - rightA) < 1e-9) continue;
+
+            const x = timeToX(times[i], rect);
+            const y1 = valueToY(leftA, ACCEL_MIN, ACCEL_MAX, rect);
+            const y2 = valueToY(rightA, ACCEL_MIN, ACCEL_MAX, rect);
+            ctx.beginPath();
+            ctx.moveTo(x, y1);
+            ctx.lineTo(x, y2);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.setLineDash([]);
+          ctx.restore();
+
+          drawSelectedTimeCursor(ctx, rect);
+        }
+
+        function roundRectPath(ctx, x, y, width, height, radius) {
+          const r = Math.min(radius, width / 2, height / 2);
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.arcTo(x + width, y, x + width, y + height, r);
+          ctx.arcTo(x + width, y + height, x, y + height, r);
+          ctx.arcTo(x, y + height, x, y, r);
+          ctx.arcTo(x, y, x + width, y, r);
+          ctx.closePath();
+        }
+
+        function drawAllGraphs() {
+          drawPositionGraph();
+          drawVelocityGraph();
+          drawAccelerationGraph();
+        }
+
+        function formatAcceleration(a) {
+          if (a === null) return "undefined";
+          return `${cleanNumber(a, 2).toFixed(2)} m/s²`;
+        }
+
+        function updateLiveData(t) {
+          const state = motionAt(t);
+          dataTime.textContent = `${cleanNumber(state.t, 2).toFixed(2)} s`;
+          dataPosition.textContent = `${cleanNumber(state.x, 2).toFixed(2)} m`;
+          dataVelocity.textContent = `${cleanNumber(state.v, 2).toFixed(2)} m/s`;
+          dataAcceleration.textContent = formatAcceleration(state.a);
+        }
+
+        function buildTrackTicks() {
+          const tickValues = [-60, -40, -20, 0, 20, 40, 60];
+          for (const value of tickValues) {
+            const percent =
+              ((value - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100;
+
+            const tick = document.createElement("div");
+            tick.className = `track-tick${value === 0 ? " zero" : ""}`;
+            tick.style.left = `${percent}%`;
+            trackAxis.appendChild(tick);
+
+            const label = document.createElement("div");
+            label.className = `track-label${value === 0 ? " zero" : ""}`;
+            label.style.left = `${percent}%`;
+            label.textContent = value === 0 ? "x = 0" : `${value} m`;
+            trackAxis.appendChild(label);
+          }
+        }
+
+        // ANIMATION-TO-SCREEN MAPPING:
+        // The car's screen position is a direct linear mapping of calculated
+        // physical position x from [-60 m, +60 m] onto [0%, 100%] of the track.
+        // The car is never moved by velocity directly; velocity changes the
+        // slope of position, and the position function moves the car.
+        function updateCar(t) {
+          const state = motionAt(t);
+          const percent = clamp(
+            ((state.x - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100,
+            0,
+            100,
+          );
+
+          if (Math.abs(state.v) > 0.02) {
+            lastNonzeroDirection = Math.sign(state.v);
+          }
+
+          car.style.display = carVisible ? "block" : "none";
+          carPositionLabel.style.display = carVisible ? "block" : "none";
+          car.style.left = `${percent}%`;
+          carPositionLabel.style.left = `${percent}%`;
+
+          // Flip the emoji when moving left. The physical reversal itself comes
+          // from the position function changing direction as velocity crosses 0.
+          const scale = lastNonzeroDirection < 0 ? -1 : 1;
+          car.style.transform = `translateX(-50%) scaleX(${scale})`;
+          carPositionLabel.textContent = `x = ${cleanNumber(state.x, 2).toFixed(2)} m`;
+        }
+
+        function updateReadouts(t) {
+          updateLiveData(t);
+          animationTime.textContent = `t = ${cleanNumber(t, 2).toFixed(2)} s`;
+          updateCar(t);
+        }
+
+        function render() {
+          drawAllGraphs();
+          const t =
+            animationState === "playing" || animationState === "paused"
+              ? animationCurrentTime
+              : selectedTime;
+          updateReadouts(t);
+        }
+
+        function nearestVelocityNode(pointerX, pointerY) {
+          const { width, height } = ensureCanvasResolution(velocityCanvas);
+          const rect = plotRect(width, height);
+          let bestIndex = null;
+          let bestDistance = Infinity;
+
+          for (let i = 0; i < times.length; i++) {
+            const x = timeToX(times[i], rect);
+            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const distance = Math.hypot(pointerX - x, pointerY - y);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestIndex = i;
+            }
+          }
+
+          return bestDistance <= 24 ? bestIndex : null;
+        }
+
+        velocityCanvas.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          const p = pointerCanvasPosition(event, velocityCanvas);
+          const node = nearestVelocityNode(p.x, p.y);
+
+          if (node !== null) {
+            activeVelocityNode = node;
+            selectedTime = times[node];
+            velocityCanvas.setPointerCapture(event.pointerId);
+            dragVelocityNode(event);
+          } else {
+            setSelectedTimeFromPointer(event, velocityCanvas);
+          }
+        });
+
+        velocityCanvas.addEventListener("pointermove", (event) => {
+          if (activeVelocityNode !== null) {
+            event.preventDefault();
+            dragVelocityNode(event);
+          } else if (event.pointerType === "mouse") {
+            setSelectedTimeFromPointer(event, velocityCanvas);
+          }
+        });
+
+        function endVelocityDrag(event) {
+          if (activeVelocityNode === null) return;
+          activeVelocityNode = null;
+          if (velocityCanvas.hasPointerCapture(event.pointerId)) {
+            velocityCanvas.releasePointerCapture(event.pointerId);
+          }
+          render();
+        }
+
+        velocityCanvas.addEventListener("pointerup", endVelocityDrag);
+        velocityCanvas.addEventListener("pointercancel", endVelocityDrag);
+
+        function dragVelocityNode(event) {
+          const p = pointerCanvasPosition(event, velocityCanvas);
+          const { width, height } = ensureCanvasResolution(velocityCanvas);
+          const rect = plotRect(width, height);
+
+          // Only the y-coordinate is used. The node's time stays fixed.
+          let newVelocity = yToValue(p.y, VELOCITY_MIN, VELOCITY_MAX, rect);
+          newVelocity = Math.round(newVelocity * 10) / 10; // 0.1 m/s increments
+          velocities[activeVelocityNode] = newVelocity;
+          selectedTime = times[activeVelocityNode];
+          render();
+        }
+
+        function setSelectedTimeFromPointer(event, canvas) {
+          if (animationState === "playing") return;
+          const p = pointerCanvasPosition(event, canvas);
+          const { width, height } = ensureCanvasResolution(canvas);
+          const rect = plotRect(width, height);
+          selectedTime = xToTime(p.x, rect);
+          if (animationState !== "paused") {
+            animationCurrentTime = selectedTime;
+          }
+          render();
+        }
+
+        // Hover/touch on any graph can select a time for the live data panel.
+        for (const canvas of canvases) {
+          if (canvas !== velocityCanvas) {
+            canvas.addEventListener("pointerdown", (event) => {
+              event.preventDefault();
+              setSelectedTimeFromPointer(event, canvas);
+            });
+            canvas.addEventListener("pointermove", (event) => {
+              if (event.pointerType === "mouse") {
+                setSelectedTimeFromPointer(event, canvas);
+              }
+            });
+          }
+        }
+
+        xiSlider.addEventListener("input", () => {
+          initialPosition = Number(xiSlider.value);
+          xiValue.textContent = `${initialPosition.toFixed(1)} m`;
+          render();
+        });
+
+        document.querySelectorAll("[data-preset]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const preset = presets[button.dataset.preset];
+            if (!preset) return;
+            velocities = [...preset];
+            stopAnimationAtStart(true);
+            render();
+          });
+        });
+
+        function startAnimation() {
+          carVisible = true;
+
+          // A completed animation starts over. A paused animation resumes.
+          if (animationState === "finished" || animationState === "stopped") {
+            animationCurrentTime = 0;
+            selectedTime = 0;
+          }
+
+          animationState = "playing";
+          animationStartWallTime =
+            performance.now() - animationCurrentTime * 1000;
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = requestAnimationFrame(animationStep);
+          render();
+        }
+
+        function animationStep(now) {
+          if (animationState !== "playing") return;
+
+          animationCurrentTime = clamp(
+            (now - animationStartWallTime) / 1000,
+            0,
+            TIME_MAX,
+          );
+          selectedTime = animationCurrentTime;
+          render();
+
+          if (animationCurrentTime >= TIME_MAX) {
+            animationCurrentTime = TIME_MAX;
+            selectedTime = TIME_MAX;
+            animationState = "finished";
+            render();
+            return;
+          }
+
+          animationFrameId = requestAnimationFrame(animationStep);
+        }
+
+        function pauseAnimation() {
+          if (animationState !== "playing") return;
+          animationState = "paused";
+          cancelAnimationFrame(animationFrameId);
+          render();
+        }
+
+        function stopAnimationAtStart(showCar = true) {
+          cancelAnimationFrame(animationFrameId);
+          animationState = "stopped";
+          animationCurrentTime = 0;
+          selectedTime = 0;
+          carVisible = showCar;
+          lastNonzeroDirection = velocityAt(0) < 0 ? -1 : 1;
+        }
+
+        animateButton.addEventListener("click", startAnimation);
+        pauseButton.addEventListener("click", pauseAnimation);
+        resetAnimationButton.addEventListener("click", () => {
+          stopAnimationAtStart(true);
+          render();
+        });
+
+        let resizeTimer = null;
+        window.addEventListener("resize", () => {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(render, 60);
+        });
+
+        buildTrackTicks();
+        xiValue.textContent = `${initialPosition.toFixed(1)} m`;
+        render();
+      })();
+    </script>
+  </body>
+</html>
