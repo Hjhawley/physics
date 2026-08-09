@@ -42,7 +42,7 @@ body {
   max-width: 110rem;
   min-width: 320px;
   margin: 0.6rem auto;
-  padding: 0.9rem 1.4rem 1rem;
+  padding: 0.5rem;
 
   color: var(--text);
   background: var(--bg);
@@ -240,7 +240,7 @@ h1 {
 canvas.graph {
   display: block;
   width: 100%;
-  height: 390px;
+  height: 360px;
 
   user-select: none;
   -webkit-user-select: none;
