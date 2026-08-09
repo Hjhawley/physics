@@ -700,25 +700,29 @@
         // slope of position, and the position function moves the car.
         function updateCar(t) {
           const state = motionAt(t);
-          const percent = clamp(
-            ((state.x - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100,
-            0,
-            100,
-          );
+
+          // Do NOT clamp. Let the car move beyond the visible track so it can
+          // leave the screen when position exceeds the displayed range.
+          const percent =
+            ((state.x - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100;
 
           if (Math.abs(state.v) > 0.02) {
             lastNonzeroDirection = Math.sign(state.v);
           }
 
           car.style.display = carVisible ? "block" : "none";
-          carPositionLabel.style.display = carVisible ? "block" : "none";
           car.style.left = `${percent}%`;
+
+          // Hide the position label when the car is off the visible track.
+          const onScreen = percent >= 0 && percent <= 100;
+          carPositionLabel.style.display =
+            carVisible && onScreen ? "block" : "none";
           carPositionLabel.style.left = `${percent}%`;
 
-          // Flip the emoji when moving left. The physical reversal itself comes
-          // from the position function changing direction as velocity crosses 0.
+          // Flip the emoji when moving left.
           const scale = lastNonzeroDirection < 0 ? -1 : 1;
           car.style.transform = `translateX(-50%) scaleX(${scale})`;
+
           carPositionLabel.textContent = `x = ${cleanNumber(state.x, 2).toFixed(2)} m`;
         }
 
