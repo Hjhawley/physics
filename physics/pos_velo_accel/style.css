@@ -1,11 +1,8 @@
 :root {
-  --semi-gray: #8887;
   --shadow: 1px 1px 3px #0005;
-  --control-height: 2.1rem;
 
   --primary: #2563eb;
   --secondary: #e7eaee;
-  --tertiary: #0f766e;
 
   --bg: #fdfdfd;
   --alt-bg: #f4f5f6;
@@ -32,9 +29,9 @@ body {
 }
 
 html {
-  background: var(--secondary);
   overflow-x: hidden;
   font-size: 102%;
+  background: var(--secondary);
 }
 
 body {
@@ -71,13 +68,6 @@ button {
   cursor: pointer;
 }
 
-.app {
-  width: 100%;
-  max-width: 100%;
-  position: relative;
-  overscroll-behavior-x: none;
-}
-
 /* ---------- PAGE HEADER ---------- */
 
 header {
@@ -99,21 +89,17 @@ h1 {
 
 /* ---------- PRESETS ---------- */
 
-.toolbar {
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+
   margin-bottom: 0.65rem;
   padding: 0.55rem 0.75rem;
+
   background: var(--alt-bg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-}
-
-.section-label {
-  margin: 0 0 0.35rem;
-  color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .preset-button,
@@ -152,7 +138,7 @@ h1 {
   outline-offset: 2px;
 }
 
-/* ---------- GRAPH LAYOUT ---------- */
+/* ---------- GRAPHS ---------- */
 
 .graphs {
   display: grid;
@@ -211,12 +197,12 @@ h1 {
   color: var(--acceleration);
 }
 
-/* ---------- GRAPH BADGES ---------- */
-
 .badge {
   flex: 0 0 auto;
   padding: 0.25rem 0.5rem;
+
   border: 1px solid var(--border);
+
   font-size: 0.69rem;
   font-weight: 700;
   letter-spacing: 0.035em;
@@ -234,8 +220,6 @@ h1 {
   background: #e7f8ec;
   border-color: #9fe2b5;
 }
-
-/* ---------- CANVASES ---------- */
 
 canvas.graph {
   display: block;
@@ -260,8 +244,6 @@ canvas.graph {
   background: linear-gradient(to bottom, #fff8f8, #fff);
 }
 
-/* ---------- INITIAL POSITION ---------- */
-
 .xi-control {
   display: grid;
   grid-template-columns: auto minmax(100px, 1fr) auto;
@@ -285,13 +267,12 @@ canvas.graph {
 
 #xiValue {
   min-width: 4.8rem;
+
   color: var(--position);
   text-align: right;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-
-/* ---------- GRAPH NOTES ---------- */
 
 .graph-note {
   min-height: 3.1rem;
@@ -354,7 +335,7 @@ canvas.graph {
   color: var(--acceleration);
 }
 
-/* ---------- MOTION PANEL ---------- */
+/* ---------- MOTION ---------- */
 
 .motion-panel {
   margin-top: 0.9rem;
@@ -397,8 +378,6 @@ canvas.graph {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-
-/* ---------- MOTION TRACK ---------- */
 
 .motion-track {
   position: relative;
@@ -475,12 +454,11 @@ canvas.graph {
 
 #car {
   position: absolute;
-  top: -2.7rem;
+  bottom: 0.15rem;
   left: 50%;
-  z-index: 4;
-  display: none;
-  width: 6rem;
-  height: 6rem;
+  width: 5rem;
+  height: 5rem;
+
   transform: translateX(-50%);
   transform-origin: center;
   will-change: left, transform;
@@ -492,23 +470,6 @@ canvas.graph {
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-
-#carPositionLabel {
-  position: absolute;
-  top: -3.2rem;
-  left: 50%;
-  z-index: 5;
-  display: none;
-  padding: 0.15rem 0.35rem;
-  color: #fff;
-  background: var(--text);
-  font-size: 0.68rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  transform: translate(-50%, -100%);
-  pointer-events: none;
 }
 
 .track-side {
