@@ -56,14 +56,7 @@
 
           <div class="xi-control">
             <label for="xiSlider">Initial position, x<sub>i</sub></label>
-            <input
-              id="xiSlider"
-              type="range"
-              min="-20"
-              max="20"
-              step="0.5"
-              value="0"
-            />
+            <input id="xiSlider" type="range" />
             <span id="xiValue">0.0 m</span>
           </div>
         </article>
@@ -81,8 +74,7 @@
           ></canvas>
 
           <div class="graph-note">
-            Drag any green node up or down. Straight segments between nodes
-            define the velocity function.
+            Drag any green node up or down to adjust velocity.
           </div>
         </article>
 
@@ -98,8 +90,7 @@
           ></canvas>
 
           <div class="graph-note">
-            Acceleration is the slope of the green velocity graph, so it stays
-            constant within each 1-second interval.
+            Acceleration is the slope of the velocity graph.
           </div>
         </article>
       </section>
@@ -159,18 +150,40 @@
       (() => {
         "use strict";
 
-        const times = [0, 1, 2, 3, 4];
-        let velocities = [0, 2, 4, 2, 0];
-        let initialPosition = 0;
+        // ================================================================
+        // CONFIGURATION
+        // Change ranges here; graphs, ticks, dragging, track, and animation
+        // derive their scales automatically.
+        // ================================================================
 
-        const TIME_MIN = 0;
-        const TIME_MAX = 4;
-        const VELOCITY_MIN = -10;
-        const VELOCITY_MAX = 10;
-        const POSITION_MIN = -40;
-        const POSITION_MAX = 40;
-        const ACCEL_MIN = -20;
-        const ACCEL_MAX = 20;
+        const config = {
+          times: [0, 1, 2, 3, 4],
+
+          position: {
+            min: -40,
+            max: 40,
+          },
+
+          velocity: {
+            min: -20,
+            max: 20,
+            dragStep: 0.1,
+          },
+
+          initialPosition: {
+            min: -20,
+            max: 20,
+            step: 0.5,
+            value: 0,
+          },
+
+          tickIntervals: 4,
+        };
+
+        const times = config.times;
+
+        let velocities = [0, 2, 4, 2, 0];
+        let initialPosition = config.initialPosition.value;
 
         const colors = {
           position: "#2563eb",
@@ -183,12 +196,12 @@
 
         const presets = {
           rest: [0, 0, 0, 0, 0],
-          positive: [4, 4, 4, 4, 4],
-          negative: [-4, -4, -4, -4, -4],
-          "speed-right": [0, 2, 4, 6, 8],
-          "slow-right": [8, 6, 4, 2, 0],
-          "speed-left": [0, -2, -4, -6, -8],
-          "slow-left": [-8, -6, -4, -2, 0],
+          positive: [5, 5, 5, 5, 5],
+          negative: [-5, -5, -5, -5, -5],
+          "speed-right": [0, 5, 10, 15, 20],
+          "slow-right": [20, 15, 10, 5, 0],
+          "speed-left": [0, -5, -10, -15, -20],
+          "slow-left": [-20, -15, -10, -5, 0],
         };
 
         const positionCanvas = document.getElementById("positionCanvas");
@@ -222,14 +235,14 @@
           bottom: 58,
         };
 
-        let selectedTime = 0;
+        let selectedTime = times[0];
         let activeVelocityNode = null;
         let carVisible = false;
         let lastNonzeroDirection = 1;
 
         let animationState = "stopped";
         let animationStartWallTime = 0;
-        let animationCurrentTime = 0;
+        let animationCurrentTime = times[0];
         let animationFrameId = null;
 
         function clamp(value, min, max) {
@@ -241,10 +254,70 @@
           return Object.is(rounded, -0) ? 0 : rounded;
         }
 
-        function intervalIndexAt(t) {
-          const tc = clamp(t, TIME_MIN, TIME_MAX);
+        function smallestTimeInterval() {
+          let smallest = Infinity;
 
-          if (tc >= times[times.length - 1]) {
+          for (let i = 0; i < times.length - 1; i++) {
+            smallest = Math.min(smallest, times[i + 1] - times[i]);
+          }
+
+          return smallest;
+        }
+
+        function rangeFor(quantity) {
+          if (quantity === "time") {
+            return {
+              min: times[0],
+              max: times[times.length - 1],
+            };
+          }
+
+          if (quantity === "acceleration") {
+            const maxAcceleration =
+              (config.velocity.max - config.velocity.min) /
+              smallestTimeInterval();
+
+            return {
+              min: -maxAcceleration,
+              max: maxAcceleration,
+            };
+          }
+
+          return config[quantity];
+        }
+
+        function niceTickStep(min, max, intervals = config.tickIntervals) {
+          const roughStep = (max - min) / intervals;
+          const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+          const normalized = roughStep / magnitude;
+
+          let nice;
+
+          if (normalized <= 1) nice = 1;
+          else if (normalized <= 2) nice = 2;
+          else if (normalized <= 5) nice = 5;
+          else nice = 10;
+
+          return nice * magnitude;
+        }
+
+        function makeTicks(min, max) {
+          const step = niceTickStep(min, max);
+          const ticks = [];
+          const start = Math.ceil(min / step) * step;
+
+          for (let value = start; value <= max + 1e-9; value += step) {
+            ticks.push(cleanNumber(value, 10));
+          }
+
+          return ticks;
+        }
+
+        function intervalIndexAt(t) {
+          const timeRange = rangeFor("time");
+          const tc = clamp(t, timeRange.min, timeRange.max);
+
+          if (tc >= timeRange.max) {
             return times.length - 2;
           }
 
@@ -264,8 +337,10 @@
 
         // Velocity is linear between each pair of fixed-time nodes.
         function velocityAt(t) {
-          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const timeRange = rangeFor("time");
+          const tc = clamp(t, timeRange.min, timeRange.max);
           const i = intervalIndexAt(tc);
+
           const t0 = times[i];
           const t1 = times[i + 1];
           const fraction = (tc - t0) / (t1 - t0);
@@ -275,8 +350,10 @@
 
         // Position is the exact integral of the piecewise-linear velocity graph.
         function positionAt(t) {
-          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const timeRange = rangeFor("time");
+          const tc = clamp(t, timeRange.min, timeRange.max);
           const i = intervalIndexAt(tc);
+
           let x = initialPosition;
 
           for (let k = 0; k < i; k++) {
@@ -290,16 +367,18 @@
           return x + velocities[i] * dtLocal + 0.5 * a * dtLocal * dtLocal;
         }
 
-        // Acceleration is the constant slope of each velocity segment.
+        // Acceleration is constant within each straight velocity segment.
         // At a sharp interior corner, the instantaneous derivative is undefined.
         function accelerationAt(t) {
-          const tc = clamp(t, TIME_MIN, TIME_MAX);
+          const timeRange = rangeFor("time");
+          const tc = clamp(t, timeRange.min, timeRange.max);
           const epsilon = 1e-8;
 
           for (let i = 1; i < times.length - 1; i++) {
             if (Math.abs(tc - times[i]) < epsilon) {
               const left = intervalAcceleration(i - 1);
               const right = intervalAcceleration(i);
+
               return Math.abs(left - right) < epsilon ? left : null;
             }
           }
@@ -308,8 +387,10 @@
         }
 
         function motionAt(t) {
+          const timeRange = rangeFor("time");
+
           return {
-            t: clamp(t, TIME_MIN, TIME_MAX),
+            t: clamp(t, timeRange.min, timeRange.max),
             x: positionAt(t),
             v: velocityAt(t),
             a: accelerationAt(t),
@@ -346,8 +427,10 @@
         }
 
         function timeToX(t, rect) {
+          const range = rangeFor("time");
+
           return (
-            rect.left + ((t - TIME_MIN) / (TIME_MAX - TIME_MIN)) * rect.width
+            rect.left + ((t - range.min) / (range.max - range.min)) * rect.width
           );
         }
 
@@ -356,12 +439,13 @@
         }
 
         function xToTime(x, rect) {
+          const range = rangeFor("time");
           const fraction = (x - rect.left) / rect.width;
 
           return clamp(
-            TIME_MIN + fraction * (TIME_MAX - TIME_MIN),
-            TIME_MIN,
-            TIME_MAX,
+            range.min + fraction * (range.max - range.min),
+            range.min,
+            range.max,
           );
         }
 
@@ -382,6 +466,7 @@
         function drawGraphFrame(canvas, { yMin, yMax, yTicks, yLabel }) {
           const { ctx, width, height } = ensureCanvasResolution(canvas);
           const rect = plotRect(width, height);
+          const timeRange = rangeFor("time");
 
           ctx.clearRect(0, 0, width, height);
           ctx.save();
@@ -391,7 +476,7 @@
           ctx.strokeStyle = colors.grid;
           ctx.lineWidth = 1;
 
-          for (let t = TIME_MIN; t <= TIME_MAX; t += 1) {
+          for (const t of makeTicks(timeRange.min, timeRange.max)) {
             const x = timeToX(t, rect);
 
             ctx.beginPath();
@@ -473,14 +558,19 @@
         }
 
         function drawPositionGraph() {
+          const range = rangeFor("position");
+          const timeRange = rangeFor("time");
+
           const { ctx, rect } = drawGraphFrame(positionCanvas, {
-            yMin: POSITION_MIN,
-            yMax: POSITION_MAX,
-            yTicks: [-40, -20, 0, 20, 40],
+            yMin: range.min,
+            yMax: range.max,
+            yTicks: makeTicks(range.min, range.max),
             yLabel: "Position (m)",
           });
 
           ctx.save();
+
+          // Position may physically exceed the displayed window.
           ctx.beginPath();
           ctx.rect(rect.left, rect.top, rect.width, rect.height);
           ctx.clip();
@@ -490,9 +580,11 @@
           const samples = 240;
 
           for (let i = 0; i <= samples; i++) {
-            const t = TIME_MIN + (i / samples) * (TIME_MAX - TIME_MIN);
+            const t =
+              timeRange.min + (i / samples) * (timeRange.max - timeRange.min);
+
             const x = timeToX(t, rect);
-            const y = valueToY(positionAt(t), POSITION_MIN, POSITION_MAX, rect);
+            const y = valueToY(positionAt(t), range.min, range.max, rect);
 
             if (i === 0) {
               ctx.moveTo(x, y);
@@ -512,10 +604,12 @@
         }
 
         function drawVelocityGraph() {
+          const range = rangeFor("velocity");
+
           const { ctx, rect } = drawGraphFrame(velocityCanvas, {
-            yMin: VELOCITY_MIN,
-            yMax: VELOCITY_MAX,
-            yTicks: [-10, -5, 0, 5, 10],
+            yMin: range.min,
+            yMax: range.max,
+            yTicks: makeTicks(range.min, range.max),
             yLabel: "Velocity (m/s)",
           });
 
@@ -524,7 +618,7 @@
 
           for (let i = 0; i < times.length; i++) {
             const x = timeToX(times[i], rect);
-            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const y = valueToY(velocities[i], range.min, range.max, rect);
 
             if (i === 0) {
               ctx.moveTo(x, y);
@@ -541,7 +635,7 @@
 
           for (let i = 0; i < times.length; i++) {
             const x = timeToX(times[i], rect);
-            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const y = valueToY(velocities[i], range.min, range.max, rect);
 
             ctx.beginPath();
             ctx.arc(x, y, activeVelocityNode === i ? 9 : 7.5, 0, Math.PI * 2);
@@ -555,7 +649,7 @@
           if (activeVelocityNode !== null) {
             const i = activeVelocityNode;
             const x = timeToX(times[i], rect);
-            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const y = valueToY(velocities[i], range.min, range.max, rect);
             const label = `v = ${cleanNumber(velocities[i], 1).toFixed(1)} m/s`;
 
             ctx.font =
@@ -590,10 +684,12 @@
         }
 
         function drawAccelerationGraph() {
+          const range = rangeFor("acceleration");
+
           const { ctx, rect } = drawGraphFrame(accelerationCanvas, {
-            yMin: ACCEL_MIN,
-            yMax: ACCEL_MAX,
-            yTicks: [-20, -10, 0, 10, 20],
+            yMin: range.min,
+            yMax: range.max,
+            yTicks: makeTicks(range.min, range.max),
             yLabel: "Acceleration (m/s²)",
           });
 
@@ -606,7 +702,7 @@
             const a = intervalAcceleration(i);
             const x0 = timeToX(times[i], rect);
             const x1 = timeToX(times[i + 1], rect);
-            const y = valueToY(a, ACCEL_MIN, ACCEL_MAX, rect);
+            const y = valueToY(a, range.min, range.max, rect);
 
             ctx.beginPath();
             ctx.moveTo(x0, y);
@@ -627,8 +723,8 @@
             }
 
             const x = timeToX(times[i], rect);
-            const y1 = valueToY(leftA, ACCEL_MIN, ACCEL_MAX, rect);
-            const y2 = valueToY(rightA, ACCEL_MIN, ACCEL_MAX, rect);
+            const y1 = valueToY(leftA, range.min, range.max, rect);
+            const y2 = valueToY(rightA, range.min, range.max, rect);
 
             ctx.beginPath();
             ctx.moveTo(x, y1);
@@ -671,9 +767,11 @@
         }
 
         function buildTrackTicks() {
-          for (const value of [-40, -20, 0, 20, 40]) {
+          const range = rangeFor("position");
+
+          for (const value of makeTicks(range.min, range.max)) {
             const percent =
-              ((value - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100;
+              ((value - range.min) / (range.max - range.min)) * 100;
 
             const tick = document.createElement("div");
             tick.className = `track-tick${value === 0 ? " zero" : ""}`;
@@ -688,12 +786,13 @@
           }
         }
 
-        // Map calculated physical position directly onto the track.
-        // Values outside ±40 m continue past the visible track rather than clamp.
         function updateCar(t) {
           const state = motionAt(t);
+          const range = rangeFor("position");
+
+          // Do not clamp: positions beyond the display range move offscreen.
           const percent =
-            ((state.x - POSITION_MIN) / (POSITION_MAX - POSITION_MIN)) * 100;
+            ((state.x - range.min) / (range.max - range.min)) * 100;
 
           if (Math.abs(state.v) > 0.02) {
             lastNonzeroDirection = Math.sign(state.v);
@@ -724,6 +823,7 @@
         }
 
         function nearestVelocityNode(pointerX, pointerY) {
+          const range = rangeFor("velocity");
           const { width, height } = ensureCanvasResolution(velocityCanvas);
           const rect = plotRect(width, height);
 
@@ -732,7 +832,7 @@
 
           for (let i = 0; i < times.length; i++) {
             const x = timeToX(times[i], rect);
-            const y = valueToY(velocities[i], VELOCITY_MIN, VELOCITY_MAX, rect);
+            const y = valueToY(velocities[i], range.min, range.max, rect);
             const distance = Math.hypot(pointerX - x, pointerY - y);
 
             if (distance < bestDistance) {
@@ -763,14 +863,16 @@
         }
 
         function dragVelocityNode(event) {
+          const range = rangeFor("velocity");
           const p = pointerCanvasPosition(event, velocityCanvas);
           const { width, height } = ensureCanvasResolution(velocityCanvas);
           const rect = plotRect(width, height);
 
-          let newVelocity = yToValue(p.y, VELOCITY_MIN, VELOCITY_MAX, rect);
+          let newVelocity = yToValue(p.y, range.min, range.max, rect);
+          const step = config.velocity.dragStep;
 
-          newVelocity = Math.round(newVelocity * 10) / 10;
-          velocities[activeVelocityNode] = newVelocity;
+          newVelocity = Math.round(newVelocity / step) * step;
+          velocities[activeVelocityNode] = cleanNumber(newVelocity, 10);
           selectedTime = times[activeVelocityNode];
 
           render();
@@ -857,16 +959,18 @@
         });
 
         function startAnimation() {
+          const timeRange = rangeFor("time");
+
           carVisible = true;
 
           if (animationState === "finished" || animationState === "stopped") {
-            animationCurrentTime = 0;
-            selectedTime = 0;
+            animationCurrentTime = timeRange.min;
+            selectedTime = timeRange.min;
           }
 
           animationState = "playing";
           animationStartWallTime =
-            performance.now() - animationCurrentTime * 1000;
+            performance.now() - (animationCurrentTime - timeRange.min) * 1000;
 
           cancelAnimationFrame(animationFrameId);
           animationFrameId = requestAnimationFrame(animationStep);
@@ -878,16 +982,18 @@
             return;
           }
 
+          const timeRange = rangeFor("time");
+
           animationCurrentTime = clamp(
-            (now - animationStartWallTime) / 1000,
-            TIME_MIN,
-            TIME_MAX,
+            timeRange.min + (now - animationStartWallTime) / 1000,
+            timeRange.min,
+            timeRange.max,
           );
 
           selectedTime = animationCurrentTime;
           render();
 
-          if (animationCurrentTime >= TIME_MAX) {
+          if (animationCurrentTime >= timeRange.max) {
             animationState = "finished";
             return;
           }
@@ -906,13 +1012,15 @@
         }
 
         function stopAnimationAtStart(showCar = true) {
+          const timeRange = rangeFor("time");
+
           cancelAnimationFrame(animationFrameId);
 
           animationState = "stopped";
-          animationCurrentTime = 0;
-          selectedTime = 0;
+          animationCurrentTime = timeRange.min;
+          selectedTime = timeRange.min;
           carVisible = showCar;
-          lastNonzeroDirection = velocityAt(0) < 0 ? -1 : 1;
+          lastNonzeroDirection = velocityAt(timeRange.min) < 0 ? -1 : 1;
         }
 
         animateButton.addEventListener("click", startAnimation);
@@ -921,6 +1029,12 @@
           stopAnimationAtStart(true);
           render();
         });
+
+        xiSlider.min = config.initialPosition.min;
+        xiSlider.max = config.initialPosition.max;
+        xiSlider.step = config.initialPosition.step;
+        xiSlider.value = initialPosition;
+        xiValue.textContent = `${initialPosition.toFixed(1)} m`;
 
         let resizeTimer;
 
