@@ -395,7 +395,7 @@ function finishShot() {
   let result;
 
   if (shot.wallHit) {
-    result = "HIT WALL";
+    result = "WALL";
 
     setStatus(
       `Hit the wall! Projectile height: ` + `${shot.wallHeight.toFixed(1)} m.`,
@@ -404,7 +404,7 @@ function finishShot() {
   } else if (
     Math.abs(shot.landing - round.targetDistance) <= TARGET_TOLERANCE
   ) {
-    result = "HIT";
+    result = "SUCCESS";
 
     setStatus(
       `Direct hit! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
@@ -558,16 +558,16 @@ function drawScene() {
   const scale = (width - 90) / worldWidth;
 
   // Sky
-  ctx.fillStyle = "#d9f2ff";
+  ctx.fillStyle = "#dff";
 
   ctx.fillRect(0, 0, width, groundY);
 
   // Ground
-  ctx.fillStyle = "#63a44e";
+  ctx.fillStyle = "#6a4";
 
   ctx.fillRect(0, groundY, width, 15);
 
-  ctx.fillStyle = "#8d643d";
+  ctx.fillStyle = "#863";
 
   ctx.fillRect(0, groundY + 15, width, height - groundY - 15);
 
