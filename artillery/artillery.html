@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projectile Motion Artillery</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="game-header">
+        <div>
+          <p class="eyebrow">2D Projectile Motion Practice</p>
+          <h1>Artillery Lab</h1>
+        </div>
+        <button
+          id="newRoundButton"
+          class="button button-secondary"
+          type="button"
+          disabled
+        >
+          New Round
+        </button>
+      </header>
+
+      <section class="scenario-panel" aria-labelledby="scenarioHeading">
+        <div class="section-heading-row">
+          <h2 id="scenarioHeading">Round Information</h2>
+          <strong id="attemptsRemaining" class="attempt-badge"
+            >Attempts remaining: 2</strong
+          >
+        </div>
+
+        <div class="scenario-grid">
+          <div class="info-card">
+            <span class="info-label">Wall</span>
+            <strong id="wallInfo">—</strong>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Target</span>
+            <strong id="targetInfo">—</strong>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Allowed angle</span>
+            <strong id="angleRangeInfo">—</strong>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Allowed speed</span>
+            <strong id="speedRangeInfo">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="canvas-panel" aria-label="Projectile motion scene">
+        <canvas id="gameCanvas"></canvas>
+      </section>
+
+      <section class="controls-panel" aria-labelledby="controlsHeading">
+        <h2 id="controlsHeading">Choose Your Launch</h2>
+
+        <div class="controls-grid">
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="angleInput">Angle</label>
+              <span>degrees</span>
+            </div>
+            <div class="dual-control">
+              <input id="angleSlider" type="range" step="1" />
+              <input
+                id="angleInput"
+                type="number"
+                step="1"
+                inputmode="decimal"
+              />
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="speedInput">Launch Speed</label>
+              <span>m/s</span>
+            </div>
+            <div class="dual-control">
+              <input id="speedSlider" type="range" step="0.1" />
+              <input
+                id="speedInput"
+                type="number"
+                step="0.1"
+                inputmode="decimal"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="launchButton" class="button button-primary" type="button">
+            Launch
+          </button>
+          <p
+            id="validationMessage"
+            class="validation-message"
+            role="status"
+            aria-live="polite"
+          ></p>
+        </div>
+      </section>
+
+      <section class="feedback-panel" aria-labelledby="feedbackHeading">
+        <h2 id="feedbackHeading">Shot Feedback</h2>
+        <div
+          id="statusMessage"
+          class="status-message status-neutral"
+          role="status"
+          aria-live="polite"
+        >
+          Read the scenario, calculate your shot, then launch.
+        </div>
+
+        <div id="shotSummary" class="summary-list" aria-live="polite">
+          <p class="summary-placeholder">
+            Your launch data will appear here after the shot.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
