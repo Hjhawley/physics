@@ -12,14 +12,12 @@ const SPEED_MAX = 30;
 const ANGLE_MIN = 20;
 const ANGLE_MAX = 70;
 
-// When solving for angle, use only the lower-angle solution.
+// Angle-solving rounds use only the low-angle solution.
 const SOLVE_ANGLE_MIN = 20;
 const SOLVE_ANGLE_MAX = 45;
 
 const TARGET_MIN = 30;
 const TARGET_MAX = 60;
-
-const ANIMATION_SPEED = 1.7;
 
 // ---------- ELEMENTS ----------
 
@@ -98,7 +96,7 @@ function flightTime(speed, angle) {
   return (2 * vy) / G;
 }
 
-function range(speed, angle) {
+function projectileRange(speed, angle) {
   const theta = radians(angle);
   return (speed * speed * Math.sin(2 * theta)) / G;
 }
@@ -116,25 +114,26 @@ function generateRound() {
   cancelShot();
 
   while (true) {
-    // Half the rounds solve for speed,
-    // half solve for angle.
     const mode = Math.random() < 0.5 ? "speed" : "angle";
 
     let solutionAngle;
     let solutionSpeed;
 
     if (mode === "speed") {
+      // Angle is given; student solves for speed.
       solutionAngle = randomInt(25, 65);
       solutionSpeed = round1(random(17, 29));
     } else {
-      // Restrict angle-solving rounds to the low-angle branch,
-      // so there is only one valid angle in the allowed range.
+      // Speed is given; student solves for the
+      // unique low-angle solution.
       solutionAngle = randomInt(SOLVE_ANGLE_MIN + 3, SOLVE_ANGLE_MAX - 2);
 
       solutionSpeed = round1(random(18, 29));
     }
 
-    const targetDistance = round1(range(solutionSpeed, solutionAngle));
+    const targetDistance = round1(
+      projectileRange(solutionSpeed, solutionAngle),
+    );
 
     if (targetDistance < TARGET_MIN || targetDistance > TARGET_MAX) {
       continue;
@@ -148,6 +147,7 @@ function generateRound() {
       solutionAngle,
     );
 
+    // Keep the wall safely below the known-valid trajectory.
     const wallHeight = round1(trajectoryHeight * random(0.55, 0.75));
 
     if (wallHeight < 2.5 || wallHeight > 12) {
@@ -172,11 +172,7 @@ function generateRound() {
   configureRound();
   updateAttempts();
 
-  shotSummary.innerHTML = `
-    <p class="summary-placeholder">
-      Your launch data will appear here after the shot.
-    </p>
-  `;
+  shotSummary.innerHTML = '<p class="summary-placeholder"></p>';
 
   validationMessage.textContent = "";
 
@@ -210,9 +206,6 @@ function configureRound() {
     angleInput.max = ANGLE_MAX;
     angleInput.value = round.solutionAngle;
 
-    angleSlider.disabled = true;
-    angleInput.disabled = true;
-
     speedSlider.min = SPEED_MIN;
     speedSlider.max = SPEED_MAX;
     speedSlider.value = 22.5;
@@ -220,9 +213,6 @@ function configureRound() {
     speedInput.min = SPEED_MIN;
     speedInput.max = SPEED_MAX;
     speedInput.value = "22.5";
-
-    speedSlider.disabled = false;
-    speedInput.disabled = false;
   } else {
     givenInfo.textContent = `Speed = ${round.solutionSpeed.toFixed(1)} m/s`;
 
@@ -236,9 +226,6 @@ function configureRound() {
     speedInput.max = SPEED_MAX;
     speedInput.value = round.solutionSpeed.toFixed(1);
 
-    speedSlider.disabled = true;
-    speedInput.disabled = true;
-
     angleSlider.min = SOLVE_ANGLE_MIN;
     angleSlider.max = SOLVE_ANGLE_MAX;
     angleSlider.value = 32;
@@ -246,13 +233,32 @@ function configureRound() {
     angleInput.min = SOLVE_ANGLE_MIN;
     angleInput.max = SOLVE_ANGLE_MAX;
     angleInput.value = 32;
-
-    angleSlider.disabled = false;
-    angleInput.disabled = false;
   }
 
-  launchButton.disabled = false;
+  enableRoundControls();
+}
+
+function enableRoundControls() {
+  const solveForSpeed = round.mode === "speed";
+
+  angleSlider.disabled = solveForSpeed;
+  angleInput.disabled = solveForSpeed;
+
+  speedSlider.disabled = !solveForSpeed;
+  speedInput.disabled = !solveForSpeed;
+
+  launchButton.disabled = attempts >= MAX_ATTEMPTS;
   newRoundButton.disabled = false;
+}
+
+function disableDuringLaunch() {
+  angleSlider.disabled = true;
+  angleInput.disabled = true;
+  speedSlider.disabled = true;
+  speedInput.disabled = true;
+
+  launchButton.disabled = true;
+  newRoundButton.disabled = true;
 }
 
 // ---------- INPUTS ----------
@@ -261,7 +267,7 @@ function syncControls(slider, input, decimals = 0) {
   slider.addEventListener("input", () => {
     const value = Number(slider.value);
 
-    input.value = decimals === 0 ? value : value.toFixed(decimals);
+    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
 
     drawScene();
   });
@@ -291,7 +297,7 @@ function syncControls(slider, input, decimals = 0) {
 
     slider.value = value;
 
-    input.value = decimals === 0 ? value : value.toFixed(decimals);
+    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
 
     drawScene();
   });
@@ -301,43 +307,19 @@ function updateAttempts() {
   attemptsRemaining.textContent = `Attempts remaining: ${MAX_ATTEMPTS - attempts}`;
 }
 
-function disableDuringLaunch() {
-  angleSlider.disabled = true;
-  angleInput.disabled = true;
-  speedSlider.disabled = true;
-  speedInput.disabled = true;
-
-  launchButton.disabled = true;
-  newRoundButton.disabled = true;
-}
-
-function restoreControls() {
-  configureRound();
-
-  // Preserve the student's adjustable value.
-  if (round.mode === "speed") {
-    angleSlider.disabled = true;
-    angleInput.disabled = true;
-  } else {
-    speedSlider.disabled = true;
-    speedInput.disabled = true;
-  }
-
-  launchButton.disabled = attempts >= MAX_ATTEMPTS;
-
-  newRoundButton.disabled = false;
-}
-
 // ---------- LAUNCH ----------
 
 function launchProjectile() {
-  if (shot || attempts >= MAX_ATTEMPTS) return;
+  if (shot || attempts >= MAX_ATTEMPTS) {
+    return;
+  }
 
   const angle = Number(angleInput.value);
   const speed = Number(speedInput.value);
 
   if (!Number.isFinite(angle) || !Number.isFinite(speed)) {
     validationMessage.textContent = "Enter a valid value.";
+
     return;
   }
 
@@ -348,7 +330,7 @@ function launchProjectile() {
 
   const { vx, vy } = velocityComponents(speed, angle);
 
-  const landing = range(speed, angle);
+  const landing = projectileRange(speed, angle);
 
   const totalTime = flightTime(speed, angle);
 
@@ -369,10 +351,11 @@ function launchProjectile() {
     landing,
     wallHeight,
     wallHit,
+
     stopTime: wallHit ? wallTime : totalTime,
+
     startTime: null,
     time: 0,
-    trail: [],
   };
 
   disableDuringLaunch();
@@ -391,22 +374,9 @@ function animate(timestamp) {
     shot.startTime = timestamp;
   }
 
-  shot.time = Math.min(
-    ((timestamp - shot.startTime) / 1000) * ANIMATION_SPEED,
-    shot.stopTime,
-  );
-
-  const previous = shot.trail[shot.trail.length - 1];
-
-  if (!previous || shot.time - previous.time > 0.05) {
-    const point = positionAtTime(shot.speed, shot.angle, shot.time);
-
-    shot.trail.push({
-      time: shot.time,
-      x: point.x,
-      y: Math.max(0, point.y),
-    });
-  }
+  // Real elapsed time:
+  // 1 real second = 1 physics second.
+  shot.time = Math.min((timestamp - shot.startTime) / 1000, shot.stopTime);
 
   drawScene();
 
@@ -460,9 +430,6 @@ function finishShot() {
 
   const roundOver = result === "HIT" || attempts >= MAX_ATTEMPTS;
 
-  const lastAngle = shot.angle;
-  const lastSpeed = shot.speed;
-
   shot = null;
 
   if (roundOver) {
@@ -474,16 +441,7 @@ function finishShot() {
     launchButton.disabled = true;
     newRoundButton.disabled = false;
   } else {
-    restoreControls();
-
-    // Restore student's previous guess.
-    if (round.mode === "speed") {
-      speedSlider.value = lastSpeed;
-      speedInput.value = lastSpeed.toFixed(1);
-    } else {
-      angleSlider.value = lastAngle;
-      angleInput.value = lastAngle;
-    }
+    enableRoundControls();
   }
 
   drawScene();
@@ -501,10 +459,13 @@ function addSummary(result) {
       ? "Did not reach wall"
       : `${shot.wallHeight.toFixed(1)} m`;
 
+  const landingText = shot.wallHit ? "—" : `${shot.landing.toFixed(1)} m`;
+
   shotSummary.insertAdjacentHTML(
     "beforeend",
     `
       <article class="summary-card">
+
         <div class="summary-cell">
           <span>Attempt</span>
           <strong>${attempts}</strong>
@@ -537,15 +498,14 @@ function addSummary(result) {
 
         <div class="summary-cell">
           <span>Landing</span>
-          <strong>
-            ${shot.wallHit ? "—" : `${shot.landing.toFixed(1)} m`}
-          </strong>
+          <strong>${landingText}</strong>
         </div>
 
         <div class="summary-cell">
           <span>Result</span>
           <strong>${result}</strong>
         </div>
+
       </article>
     `,
   );
@@ -599,13 +559,16 @@ function drawScene() {
 
   // Sky
   ctx.fillStyle = "#d9f2ff";
+
   ctx.fillRect(0, 0, width, groundY);
 
   // Ground
   ctx.fillStyle = "#63a44e";
+
   ctx.fillRect(0, groundY, width, 15);
 
   ctx.fillStyle = "#8d643d";
+
   ctx.fillRect(0, groundY + 15, width, height - groundY - 15);
 
   drawTicks(scale, groundY, worldWidth);
@@ -616,11 +579,11 @@ function drawScene() {
 
   drawCatapult(55, groundY);
 
-  drawAngleIndicator(55, groundY, shot ? shot.angle : Number(angleInput.value));
+  const displayedAngle = shot ? shot.angle : Number(angleInput.value);
+
+  drawAngleIndicator(55, groundY, displayedAngle);
 
   if (shot) {
-    drawTrail(scale, groundY);
-
     const point = positionAtTime(shot.speed, shot.angle, shot.time);
 
     drawProjectile(
@@ -628,6 +591,8 @@ function drawScene() {
     );
   }
 }
+
+// ---------- DISTANCE MARKERS ----------
 
 function drawTicks(scale, groundY, worldWidth) {
   ctx.font = "11px system-ui";
@@ -638,6 +603,7 @@ function drawTicks(scale, groundY, worldWidth) {
     const point = worldToScreen(x, 0, scale, groundY);
 
     ctx.beginPath();
+
     ctx.moveTo(point.x, groundY - 4);
 
     ctx.lineTo(point.x, groundY + 6);
@@ -647,6 +613,8 @@ function drawTicks(scale, groundY, worldWidth) {
     ctx.fillText(`${x} m`, point.x - 10, groundY + 25);
   }
 }
+
+// ---------- WALL ----------
 
 function drawWall(scale, groundY) {
   const bottom = worldToScreen(round.wallDistance, 0, scale, groundY);
@@ -663,24 +631,31 @@ function drawWall(scale, groundY) {
   ctx.fillRect(bottom.x - 9, top.y, 18, bottom.y - top.y);
 }
 
+// ---------- TARGET ----------
+
 function drawTarget(scale, groundY) {
   const point = worldToScreen(round.targetDistance, 0, scale, groundY);
 
   ctx.fillStyle = "#c92f2f";
+
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 14, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#f1d04b";
+
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 8, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#c92f2f";
+
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 3, 0, Math.PI * 2);
   ctx.fill();
 }
+
+// ---------- CATAPULT ----------
 
 function drawCatapult(x, y) {
   ctx.strokeStyle = "#704820";
@@ -703,10 +678,13 @@ function drawCatapult(x, y) {
   ctx.stroke();
 
   ctx.fillStyle = "#4d5056";
+
   ctx.beginPath();
   ctx.arc(x + 61, y - 71, 7, 0, Math.PI * 2);
   ctx.fill();
 }
+
+// ---------- ANGLE INDICATOR ----------
 
 function drawAngleIndicator(x, y, angle) {
   if (!Number.isFinite(angle)) return;
@@ -723,19 +701,20 @@ function drawAngleIndicator(x, y, angle) {
 
   ctx.save();
 
-  ctx.strokeStyle = "#2563eb";
-  ctx.fillStyle = "#2563eb";
+  // Horizontal reference
+  ctx.strokeStyle = "rgba(37, 99, 235, 0.35)";
+
   ctx.lineWidth = 2;
 
-  // Horizontal reference
-  ctx.globalAlpha = 0.35;
   ctx.beginPath();
   ctx.moveTo(pivotX, pivotY);
   ctx.lineTo(pivotX + 30, pivotY);
   ctx.stroke();
 
-  // Angle arrow
-  ctx.globalAlpha = 1;
+  // Angle indicator
+  ctx.strokeStyle = "#2563eb";
+  ctx.fillStyle = "#2563eb";
+
   ctx.beginPath();
   ctx.moveTo(pivotX, pivotY);
   ctx.lineTo(endX, endY);
@@ -748,28 +727,7 @@ function drawAngleIndicator(x, y, angle) {
   ctx.restore();
 }
 
-function drawTrail(scale, groundY) {
-  if (shot.trail.length < 2) return;
-
-  ctx.strokeStyle = "#4c556566";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 5]);
-
-  ctx.beginPath();
-
-  shot.trail.forEach((point, index) => {
-    const p = worldToScreen(point.x, point.y, scale, groundY);
-
-    if (index === 0) {
-      ctx.moveTo(p.x, p.y);
-    } else {
-      ctx.lineTo(p.x, p.y);
-    }
-  });
-
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
+// ---------- PROJECTILE ----------
 
 function drawProjectile(point) {
   ctx.fillStyle = "#50535a";
