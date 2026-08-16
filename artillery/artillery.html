@@ -16,9 +16,9 @@
         </div>
       </header>
 
-      <section class="scenario-panel" aria-labelledby="scenarioHeading">
+      <section class="scenario-panel">
         <div class="section-heading-row">
-          <h2 id="scenarioHeading">Round Information</h2>
+          <h2>Round Information</h2>
           <strong id="attemptsRemaining" class="attempt-badge">
             Attempts remaining: 3
           </strong>
@@ -36,23 +36,23 @@
           </div>
 
           <div class="info-card">
-            <span class="info-label">Allowed angle</span>
-            <strong>20°–70°</strong>
+            <span class="info-label">Given</span>
+            <strong id="givenInfo">—</strong>
           </div>
 
           <div class="info-card">
-            <span class="info-label">Allowed speed</span>
-            <strong>15–30 m/s</strong>
+            <span class="info-label">Solve For</span>
+            <strong id="solveInfo">—</strong>
           </div>
         </div>
       </section>
 
-      <section class="canvas-panel" aria-label="Projectile motion scene">
+      <section class="canvas-panel">
         <canvas id="gameCanvas"></canvas>
       </section>
 
-      <section class="controls-panel" aria-labelledby="controlsHeading">
-        <h2 id="controlsHeading">Choose Your Launch</h2>
+      <section class="controls-panel">
+        <h2>Choose Your Launch</h2>
 
         <div class="controls-grid">
           <div class="control-group">
@@ -62,23 +62,9 @@
             </div>
 
             <div class="dual-control">
-              <input
-                id="angleSlider"
-                type="range"
-                min="20"
-                max="70"
-                step="1"
-                value="45"
-              />
+              <input id="angleSlider" type="range" min="20" max="70" step="1" />
 
-              <input
-                id="angleInput"
-                type="number"
-                min="20"
-                max="70"
-                step="1"
-                value="45"
-              />
+              <input id="angleInput" type="number" min="20" max="70" step="1" />
             </div>
           </div>
 
@@ -95,7 +81,6 @@
                 min="15"
                 max="30"
                 step="0.1"
-                value="22.5"
               />
 
               <input
@@ -104,7 +89,6 @@
                 min="15"
                 max="30"
                 step="0.1"
-                value="22.5"
               />
             </div>
           </div>
@@ -123,28 +107,18 @@
             New Round
           </button>
 
-          <p
-            id="validationMessage"
-            class="validation-message"
-            role="status"
-            aria-live="polite"
-          ></p>
+          <p id="validationMessage" class="validation-message"></p>
         </div>
       </section>
 
-      <section class="feedback-panel" aria-labelledby="feedbackHeading">
-        <h2 id="feedbackHeading">Shot Feedback</h2>
+      <section class="feedback-panel">
+        <h2>Shot Feedback</h2>
 
-        <div
-          id="statusMessage"
-          class="status-message status-neutral"
-          role="status"
-          aria-live="polite"
-        >
+        <div id="statusMessage" class="status-message status-neutral">
           Read the scenario, calculate your shot, then launch.
         </div>
 
-        <div id="shotSummary" class="summary-list" aria-live="polite">
+        <div id="shotSummary" class="summary-list">
           <p class="summary-placeholder">
             Your launch data will appear here after the shot.
           </p>

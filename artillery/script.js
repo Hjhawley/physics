@@ -1,15 +1,20 @@
 "use strict";
 
-// ---------- GAME SETTINGS ----------
+// ---------- SETTINGS ----------
 
 const G = 9.8;
 const MAX_ATTEMPTS = 3;
 const TARGET_TOLERANCE = 1;
 
-const ANGLE_MIN = 20;
-const ANGLE_MAX = 70;
 const SPEED_MIN = 15;
 const SPEED_MAX = 30;
+
+const ANGLE_MIN = 20;
+const ANGLE_MAX = 70;
+
+// When solving for angle, use only the lower-angle solution.
+const SOLVE_ANGLE_MIN = 20;
+const SOLVE_ANGLE_MAX = 45;
 
 const TARGET_MIN = 30;
 const TARGET_MAX = 60;
@@ -23,6 +28,8 @@ const ctx = canvas.getContext("2d");
 
 const wallInfo = document.getElementById("wallInfo");
 const targetInfo = document.getElementById("targetInfo");
+const givenInfo = document.getElementById("givenInfo");
+const solveInfo = document.getElementById("solveInfo");
 const attemptsRemaining = document.getElementById("attemptsRemaining");
 
 const angleSlider = document.getElementById("angleSlider");
@@ -46,16 +53,8 @@ let animationFrame = null;
 
 // ---------- HELPERS ----------
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function radians(degrees) {
   return (degrees * Math.PI) / 180;
-}
-
-function round1(value) {
-  return Math.round(value * 10) / 10;
 }
 
 function random(min, max) {
@@ -66,9 +65,12 @@ function randomInt(min, max) {
   return Math.floor(random(min, max + 1));
 }
 
-function getPreviewAngle() {
-  const value = Number(angleInput.value);
-  return Number.isFinite(value) ? clamp(value, ANGLE_MIN, ANGLE_MAX) : 45;
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 // ---------- PHYSICS ----------
@@ -114,30 +116,51 @@ function generateRound() {
   cancelShot();
 
   while (true) {
-    const solutionAngle = randomInt(30, 60);
-    const solutionSpeed = round1(random(18, 28));
+    // Half the rounds solve for speed,
+    // half solve for angle.
+    const mode = Math.random() < 0.5 ? "speed" : "angle";
+
+    let solutionAngle;
+    let solutionSpeed;
+
+    if (mode === "speed") {
+      solutionAngle = randomInt(25, 65);
+      solutionSpeed = round1(random(17, 29));
+    } else {
+      // Restrict angle-solving rounds to the low-angle branch,
+      // so there is only one valid angle in the allowed range.
+      solutionAngle = randomInt(SOLVE_ANGLE_MIN + 3, SOLVE_ANGLE_MAX - 2);
+
+      solutionSpeed = round1(random(18, 29));
+    }
 
     const targetDistance = round1(range(solutionSpeed, solutionAngle));
+
     if (targetDistance < TARGET_MIN || targetDistance > TARGET_MAX) {
       continue;
     }
 
     const wallDistance = round1(targetDistance * random(0.3, 0.65));
-    const solutionHeight = heightAtX(
+
+    const trajectoryHeight = heightAtX(
       wallDistance,
       solutionSpeed,
       solutionAngle,
     );
 
-    const wallHeight = round1(solutionHeight * random(0.55, 0.75));
+    const wallHeight = round1(trajectoryHeight * random(0.55, 0.75));
+
     if (wallHeight < 2.5 || wallHeight > 12) {
       continue;
     }
 
     round = {
+      mode,
       targetDistance,
       wallDistance,
       wallHeight,
+      solutionAngle,
+      solutionSpeed,
     };
 
     break;
@@ -146,17 +169,8 @@ function generateRound() {
   attempts = 0;
   shot = null;
 
-  angleSlider.value = 45;
-  angleInput.value = 45;
-
-  speedSlider.value = 22.5;
-  speedInput.value = "22.5";
-
-  wallInfo.textContent =
-    `${round.wallDistance.toFixed(1)} m away, ` +
-    `${round.wallHeight.toFixed(1)} m tall`;
-
-  targetInfo.textContent = `${round.targetDistance.toFixed(1)} m away`;
+  configureRound();
+  updateAttempts();
 
   shotSummary.innerHTML = `
     <p class="summary-placeholder">
@@ -166,20 +180,88 @@ function generateRound() {
 
   validationMessage.textContent = "";
 
-  setStatus("Read the scenario, calculate your shot, then launch.", "neutral");
+  setStatus(
+    "Calculate the missing launch variable, then test your shot.",
+    "neutral",
+  );
 
-  enableControls();
-  updateAttempts();
   drawScene();
 }
 
-// ---------- CONTROLS ----------
+// ---------- ROUND CONTROLS ----------
+
+function configureRound() {
+  wallInfo.textContent =
+    `${round.wallDistance.toFixed(1)} m away, ` +
+    `${round.wallHeight.toFixed(1)} m tall`;
+
+  targetInfo.textContent = `${round.targetDistance.toFixed(1)} m away`;
+
+  if (round.mode === "speed") {
+    givenInfo.textContent = `Angle = ${round.solutionAngle}°`;
+
+    solveInfo.textContent = "Launch speed";
+
+    angleSlider.min = ANGLE_MIN;
+    angleSlider.max = ANGLE_MAX;
+    angleSlider.value = round.solutionAngle;
+
+    angleInput.min = ANGLE_MIN;
+    angleInput.max = ANGLE_MAX;
+    angleInput.value = round.solutionAngle;
+
+    angleSlider.disabled = true;
+    angleInput.disabled = true;
+
+    speedSlider.min = SPEED_MIN;
+    speedSlider.max = SPEED_MAX;
+    speedSlider.value = 22.5;
+
+    speedInput.min = SPEED_MIN;
+    speedInput.max = SPEED_MAX;
+    speedInput.value = "22.5";
+
+    speedSlider.disabled = false;
+    speedInput.disabled = false;
+  } else {
+    givenInfo.textContent = `Speed = ${round.solutionSpeed.toFixed(1)} m/s`;
+
+    solveInfo.textContent = "Launch angle";
+
+    speedSlider.min = SPEED_MIN;
+    speedSlider.max = SPEED_MAX;
+    speedSlider.value = round.solutionSpeed;
+
+    speedInput.min = SPEED_MIN;
+    speedInput.max = SPEED_MAX;
+    speedInput.value = round.solutionSpeed.toFixed(1);
+
+    speedSlider.disabled = true;
+    speedInput.disabled = true;
+
+    angleSlider.min = SOLVE_ANGLE_MIN;
+    angleSlider.max = SOLVE_ANGLE_MAX;
+    angleSlider.value = 32;
+
+    angleInput.min = SOLVE_ANGLE_MIN;
+    angleInput.max = SOLVE_ANGLE_MAX;
+    angleInput.value = 32;
+
+    angleSlider.disabled = false;
+    angleInput.disabled = false;
+  }
+
+  launchButton.disabled = false;
+  newRoundButton.disabled = false;
+}
+
+// ---------- INPUTS ----------
 
 function syncControls(slider, input, decimals = 0) {
   slider.addEventListener("input", () => {
     const value = Number(slider.value);
 
-    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
+    input.value = decimals === 0 ? value : value.toFixed(decimals);
 
     drawScene();
   });
@@ -188,9 +270,7 @@ function syncControls(slider, input, decimals = 0) {
     const value = Number(input.value);
 
     if (Number.isFinite(value)) {
-      const safeValue = clamp(value, Number(input.min), Number(input.max));
-
-      slider.value = safeValue;
+      slider.value = clamp(value, Number(input.min), Number(input.max));
 
       drawScene();
     }
@@ -210,64 +290,66 @@ function syncControls(slider, input, decimals = 0) {
     }
 
     slider.value = value;
-    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
+
+    input.value = decimals === 0 ? value : value.toFixed(decimals);
 
     drawScene();
   });
 }
 
 function updateAttempts() {
-  attemptsRemaining.textContent = `Attempts remaining: ${Math.max(0, MAX_ATTEMPTS - attempts)}`;
+  attemptsRemaining.textContent = `Attempts remaining: ${MAX_ATTEMPTS - attempts}`;
 }
 
-function disableControls() {
+function disableDuringLaunch() {
   angleSlider.disabled = true;
   angleInput.disabled = true;
   speedSlider.disabled = true;
   speedInput.disabled = true;
+
   launchButton.disabled = true;
   newRoundButton.disabled = true;
 }
 
-function enableControls() {
-  angleSlider.disabled = false;
-  angleInput.disabled = false;
-  speedSlider.disabled = false;
-  speedInput.disabled = false;
+function restoreControls() {
+  configureRound();
+
+  // Preserve the student's adjustable value.
+  if (round.mode === "speed") {
+    angleSlider.disabled = true;
+    angleInput.disabled = true;
+  } else {
+    speedSlider.disabled = true;
+    speedInput.disabled = true;
+  }
 
   launchButton.disabled = attempts >= MAX_ATTEMPTS;
+
   newRoundButton.disabled = false;
 }
 
 // ---------- LAUNCH ----------
 
 function launchProjectile() {
-  if (shot || attempts >= MAX_ATTEMPTS) {
-    return;
-  }
+  if (shot || attempts >= MAX_ATTEMPTS) return;
 
   const angle = Number(angleInput.value);
   const speed = Number(speedInput.value);
 
-  if (
-    !Number.isFinite(angle) ||
-    !Number.isFinite(speed) ||
-    angle < ANGLE_MIN ||
-    angle > ANGLE_MAX ||
-    speed < SPEED_MIN ||
-    speed > SPEED_MAX
-  ) {
-    validationMessage.textContent =
-      "Enter an angle from 20°–70° and a speed from 15–30 m/s.";
+  if (!Number.isFinite(angle) || !Number.isFinite(speed)) {
+    validationMessage.textContent = "Enter a valid value.";
     return;
   }
 
   validationMessage.textContent = "";
+
   attempts++;
   updateAttempts();
 
   const { vx, vy } = velocityComponents(speed, angle);
+
   const landing = range(speed, angle);
+
   const totalTime = flightTime(speed, angle);
 
   const wallHeight =
@@ -287,14 +369,14 @@ function launchProjectile() {
     landing,
     wallHeight,
     wallHit,
-    totalTime,
     stopTime: wallHit ? wallTime : totalTime,
     startTime: null,
     time: 0,
     trail: [],
   };
 
-  disableControls();
+  disableDuringLaunch();
+
   setStatus("Projectile in flight…", "neutral");
 
   animationFrame = requestAnimationFrame(animate);
@@ -314,10 +396,9 @@ function animate(timestamp) {
     shot.stopTime,
   );
 
-  const lastTrailPoint =
-    shot.trail.length > 0 ? shot.trail[shot.trail.length - 1] : null;
+  const previous = shot.trail[shot.trail.length - 1];
 
-  if (!lastTrailPoint || shot.time - lastTrailPoint.time > 0.05) {
+  if (!previous || shot.time - previous.time > 0.05) {
     const point = positionAtTime(shot.speed, shot.angle, shot.time);
 
     shot.trail.push({
@@ -331,16 +412,14 @@ function animate(timestamp) {
 
   if (shot.time >= shot.stopTime) {
     finishShot();
-    return;
+  } else {
+    animationFrame = requestAnimationFrame(animate);
   }
-
-  animationFrame = requestAnimationFrame(animate);
 }
 
-// ---------- RESULTS ----------
+// ---------- RESULT ----------
 
 function finishShot() {
-  cancelAnimationFrame(animationFrame);
   animationFrame = null;
 
   let result;
@@ -349,9 +428,7 @@ function finishShot() {
     result = "HIT WALL";
 
     setStatus(
-      `Hit the wall! Projectile height: ` +
-        `${shot.wallHeight.toFixed(1)} m. ` +
-        `Wall height: ${round.wallHeight.toFixed(1)} m.`,
+      `Hit the wall! Projectile height: ` + `${shot.wallHeight.toFixed(1)} m.`,
       "miss",
     );
   } else if (
@@ -360,45 +437,62 @@ function finishShot() {
     result = "HIT";
 
     setStatus(
-      `Direct hit! Landing position: ${shot.landing.toFixed(1)} m.`,
+      `Direct hit! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
       "hit",
     );
   } else if (shot.landing < round.targetDistance - TARGET_TOLERANCE) {
     result = "SHORT";
 
-    setStatus(`Short! Landing position: ${shot.landing.toFixed(1)} m.`, "miss");
+    setStatus(
+      `Short! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
+      "miss",
+    );
   } else {
     result = "OVERSHOT";
 
     setStatus(
-      `Overshot! Landing position: ${shot.landing.toFixed(1)} m.`,
+      `Overshot! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
       "miss",
     );
   }
 
   addSummary(result);
 
-  const hit = result === "HIT";
+  const roundOver = result === "HIT" || attempts >= MAX_ATTEMPTS;
+
+  const lastAngle = shot.angle;
+  const lastSpeed = shot.speed;
+
   shot = null;
 
-  if (hit || attempts >= MAX_ATTEMPTS) {
+  if (roundOver) {
     angleSlider.disabled = true;
     angleInput.disabled = true;
     speedSlider.disabled = true;
     speedInput.disabled = true;
+
     launchButton.disabled = true;
     newRoundButton.disabled = false;
   } else {
-    enableControls();
+    restoreControls();
+
+    // Restore student's previous guess.
+    if (round.mode === "speed") {
+      speedSlider.value = lastSpeed;
+      speedInput.value = lastSpeed.toFixed(1);
+    } else {
+      angleSlider.value = lastAngle;
+      angleInput.value = lastAngle;
+    }
   }
 
   drawScene();
 }
 
-function addSummary(result) {
-  const attemptNumber = attempts;
+// ---------- SUMMARY ----------
 
-  if (attemptNumber === 1) {
+function addSummary(result) {
+  if (attempts === 1) {
     shotSummary.innerHTML = "";
   }
 
@@ -413,7 +507,7 @@ function addSummary(result) {
       <article class="summary-card">
         <div class="summary-cell">
           <span>Attempt</span>
-          <strong>${attemptNumber}</strong>
+          <strong>${attempts}</strong>
         </div>
 
         <div class="summary-cell">
@@ -443,7 +537,9 @@ function addSummary(result) {
 
         <div class="summary-cell">
           <span>Landing</span>
-          <strong>${shot.wallHit ? "—" : `${shot.landing.toFixed(1)} m`}</strong>
+          <strong>
+            ${shot.wallHit ? "—" : `${shot.landing.toFixed(1)} m`}
+          </strong>
         </div>
 
         <div class="summary-cell">
@@ -482,18 +578,23 @@ function drawScene() {
   if (!round) return;
 
   const rect = canvas.getBoundingClientRect();
+
   const dpr = window.devicePixelRatio || 1;
 
   const width = Math.max(320, rect.width);
+
   const height = Math.max(300, rect.height);
 
   canvas.width = Math.round(width * dpr);
+
   canvas.height = Math.round(height * dpr);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const groundY = height - 60;
+
   const worldWidth = Math.max(70, round.targetDistance + 12);
+
   const scale = (width - 90) / worldWidth;
 
   // Sky
@@ -508,12 +609,14 @@ function drawScene() {
   ctx.fillRect(0, groundY + 15, width, height - groundY - 15);
 
   drawTicks(scale, groundY, worldWidth);
+
   drawTarget(scale, groundY);
+
   drawWall(scale, groundY);
+
   drawCatapult(55, groundY);
 
-  const indicatorAngle = shot ? shot.angle : getPreviewAngle();
-  drawAngleIndicator(55, groundY, indicatorAngle);
+  drawAngleIndicator(55, groundY, shot ? shot.angle : Number(angleInput.value));
 
   if (shot) {
     drawTrail(scale, groundY);
@@ -536,7 +639,9 @@ function drawTicks(scale, groundY, worldWidth) {
 
     ctx.beginPath();
     ctx.moveTo(point.x, groundY - 4);
+
     ctx.lineTo(point.x, groundY + 6);
+
     ctx.stroke();
 
     ctx.fillText(`${x} m`, point.x - 10, groundY + 25);
@@ -545,6 +650,7 @@ function drawTicks(scale, groundY, worldWidth) {
 
 function drawWall(scale, groundY) {
   const bottom = worldToScreen(round.wallDistance, 0, scale, groundY);
+
   const top = worldToScreen(
     round.wallDistance,
     round.wallHeight,
@@ -553,6 +659,7 @@ function drawWall(scale, groundY) {
   );
 
   ctx.fillStyle = "#777f88";
+
   ctx.fillRect(bottom.x - 9, top.y, 18, bottom.y - top.y);
 }
 
@@ -602,6 +709,8 @@ function drawCatapult(x, y) {
 }
 
 function drawAngleIndicator(x, y, angle) {
+  if (!Number.isFinite(angle)) return;
+
   const pivotX = x + 28;
   const pivotY = y - 42;
 
@@ -609,49 +718,32 @@ function drawAngleIndicator(x, y, angle) {
   const length = 38;
 
   const endX = pivotX + length * Math.cos(theta);
+
   const endY = pivotY - length * Math.sin(theta);
 
   ctx.save();
 
-  // baseline
-  ctx.strokeStyle = "rgba(37, 99, 235, 0.35)";
+  ctx.strokeStyle = "#2563eb";
+  ctx.fillStyle = "#2563eb";
   ctx.lineWidth = 2;
+
+  // Horizontal reference
+  ctx.globalAlpha = 0.35;
   ctx.beginPath();
   ctx.moveTo(pivotX, pivotY);
-  ctx.lineTo(pivotX + 32, pivotY);
+  ctx.lineTo(pivotX + 30, pivotY);
   ctx.stroke();
 
-  // arrow shaft
-  ctx.strokeStyle = "#2563eb";
-  ctx.lineWidth = 3;
+  // Angle arrow
+  ctx.globalAlpha = 1;
   ctx.beginPath();
   ctx.moveTo(pivotX, pivotY);
   ctx.lineTo(endX, endY);
   ctx.stroke();
 
-  // arrowhead
-  const screenAngle = -theta;
-  const headLength = 8;
-  const wing = Math.PI / 7;
-
-  ctx.fillStyle = "#2563eb";
-  ctx.beginPath();
-  ctx.moveTo(endX, endY);
-  ctx.lineTo(
-    endX - headLength * Math.cos(screenAngle - wing),
-    endY - headLength * Math.sin(screenAngle - wing),
-  );
-  ctx.lineTo(
-    endX - headLength * Math.cos(screenAngle + wing),
-    endY - headLength * Math.sin(screenAngle + wing),
-  );
-  ctx.closePath();
-  ctx.fill();
-
-  // angle label
   ctx.font = "12px system-ui";
-  ctx.fillStyle = "#1d4ed8";
-  ctx.fillText(`${Math.round(angle)}°`, endX + 6, endY - 4);
+
+  ctx.fillText(`${Math.round(angle)}°`, endX + 5, endY - 4);
 
   ctx.restore();
 }
@@ -685,7 +777,9 @@ function drawProjectile(point) {
   ctx.lineWidth = 2;
 
   ctx.beginPath();
+
   ctx.arc(point.x, point.y, 7, 0, Math.PI * 2);
+
   ctx.fill();
   ctx.stroke();
 }
@@ -693,10 +787,13 @@ function drawProjectile(point) {
 // ---------- EVENTS ----------
 
 syncControls(angleSlider, angleInput);
+
 syncControls(speedSlider, speedInput, 1);
 
 launchButton.addEventListener("click", launchProjectile);
+
 newRoundButton.addEventListener("click", generateRound);
+
 window.addEventListener("resize", drawScene);
 
 // ---------- START ----------
