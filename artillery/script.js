@@ -44,11 +44,34 @@ let attempts = 0;
 let shot = null;
 let animationFrame = null;
 
-// ---------- PHYSICS ----------
+// ---------- HELPERS ----------
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
 function radians(degrees) {
   return (degrees * Math.PI) / 180;
 }
+
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function random(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function randomInt(min, max) {
+  return Math.floor(random(min, max + 1));
+}
+
+function getPreviewAngle() {
+  const value = Number(angleInput.value);
+  return Number.isFinite(value) ? clamp(value, ANGLE_MIN, ANGLE_MAX) : 45;
+}
+
+// ---------- PHYSICS ----------
 
 function velocityComponents(speed, angle) {
   const theta = radians(angle);
@@ -85,36 +108,21 @@ function heightAtX(x, speed, angle) {
   return x * Math.tan(theta) - (G * x * x) / (2 * speed * speed * cos * cos);
 }
 
-// ---------- RANDOM ROUND ----------
-
-function random(min, max) {
-  return min + Math.random() * (max - min);
-}
-
-function randomInt(min, max) {
-  return Math.floor(random(min, max + 1));
-}
-
-function round1(value) {
-  return Math.round(value * 10) / 10;
-}
+// ---------- ROUND GENERATION ----------
 
 function generateRound() {
   cancelShot();
 
   while (true) {
-    // Start with a guaranteed-valid shot.
     const solutionAngle = randomInt(30, 60);
     const solutionSpeed = round1(random(18, 28));
 
     const targetDistance = round1(range(solutionSpeed, solutionAngle));
-
     if (targetDistance < TARGET_MIN || targetDistance > TARGET_MAX) {
       continue;
     }
 
     const wallDistance = round1(targetDistance * random(0.3, 0.65));
-
     const solutionHeight = heightAtX(
       wallDistance,
       solutionSpeed,
@@ -122,7 +130,6 @@ function generateRound() {
     );
 
     const wallHeight = round1(solutionHeight * random(0.55, 0.75));
-
     if (wallHeight < 2.5 || wallHeight > 12) {
       continue;
     }
@@ -170,8 +177,23 @@ function generateRound() {
 
 function syncControls(slider, input, decimals = 0) {
   slider.addEventListener("input", () => {
-    input.value =
-      decimals === 0 ? slider.value : Number(slider.value).toFixed(decimals);
+    const value = Number(slider.value);
+
+    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
+
+    drawScene();
+  });
+
+  input.addEventListener("input", () => {
+    const value = Number(input.value);
+
+    if (Number.isFinite(value)) {
+      const safeValue = clamp(value, Number(input.min), Number(input.max));
+
+      slider.value = safeValue;
+
+      drawScene();
+    }
   });
 
   input.addEventListener("change", () => {
@@ -181,14 +203,16 @@ function syncControls(slider, input, decimals = 0) {
       value = Number(slider.value);
     }
 
-    value = Math.max(Number(input.min), Math.min(Number(input.max), value));
+    value = clamp(value, Number(input.min), Number(input.max));
 
     if (decimals === 0) {
       value = Math.round(value);
     }
 
     slider.value = value;
-    input.value = decimals === 0 ? value : value.toFixed(decimals);
+    input.value = decimals === 0 ? String(value) : value.toFixed(decimals);
+
+    drawScene();
   });
 }
 
@@ -243,7 +267,6 @@ function launchProjectile() {
   updateAttempts();
 
   const { vx, vy } = velocityComponents(speed, angle);
-
   const landing = range(speed, angle);
   const totalTime = flightTime(speed, angle);
 
@@ -291,7 +314,10 @@ function animate(timestamp) {
     shot.stopTime,
   );
 
-  if (shot.trail.length === 0 || shot.time - shot.trail.at(-1).time > 0.05) {
+  const lastTrailPoint =
+    shot.trail.length > 0 ? shot.trail[shot.trail.length - 1] : null;
+
+  if (!lastTrailPoint || shot.time - lastTrailPoint.time > 0.05) {
     const point = positionAtTime(shot.speed, shot.angle, shot.time);
 
     shot.trail.push({
@@ -334,21 +360,18 @@ function finishShot() {
     result = "HIT";
 
     setStatus(
-      `Direct hit! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
+      `Direct hit! Landing position: ${shot.landing.toFixed(1)} m.`,
       "hit",
     );
   } else if (shot.landing < round.targetDistance - TARGET_TOLERANCE) {
     result = "SHORT";
 
-    setStatus(
-      `Short! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
-      "miss",
-    );
+    setStatus(`Short! Landing position: ${shot.landing.toFixed(1)} m.`, "miss");
   } else {
     result = "OVERSHOT";
 
     setStatus(
-      `Overshot! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
+      `Overshot! Landing position: ${shot.landing.toFixed(1)} m.`,
       "miss",
     );
   }
@@ -356,7 +379,6 @@ function finishShot() {
   addSummary(result);
 
   const hit = result === "HIT";
-
   shot = null;
 
   if (hit || attempts >= MAX_ATTEMPTS) {
@@ -365,8 +387,6 @@ function finishShot() {
     speedSlider.disabled = true;
     speedInput.disabled = true;
     launchButton.disabled = true;
-
-    // A new round can always be started once the shot is finished.
     newRoundButton.disabled = false;
   } else {
     enableControls();
@@ -459,6 +479,8 @@ function worldToScreen(x, y, scale, groundY) {
 }
 
 function drawScene() {
+  if (!round) return;
+
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
 
@@ -471,10 +493,7 @@ function drawScene() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const groundY = height - 60;
-
-  // Leave room beyond the target for overshoots.
   const worldWidth = Math.max(70, round.targetDistance + 12);
-
   const scale = (width - 90) / worldWidth;
 
   // Sky
@@ -492,6 +511,9 @@ function drawScene() {
   drawTarget(scale, groundY);
   drawWall(scale, groundY);
   drawCatapult(55, groundY);
+
+  const indicatorAngle = shot ? shot.angle : getPreviewAngle();
+  drawAngleIndicator(55, groundY, indicatorAngle);
 
   if (shot) {
     drawTrail(scale, groundY);
@@ -523,7 +545,6 @@ function drawTicks(scale, groundY, worldWidth) {
 
 function drawWall(scale, groundY) {
   const bottom = worldToScreen(round.wallDistance, 0, scale, groundY);
-
   const top = worldToScreen(
     round.wallDistance,
     round.wallHeight,
@@ -580,6 +601,61 @@ function drawCatapult(x, y) {
   ctx.fill();
 }
 
+function drawAngleIndicator(x, y, angle) {
+  const pivotX = x + 28;
+  const pivotY = y - 42;
+
+  const theta = radians(angle);
+  const length = 38;
+
+  const endX = pivotX + length * Math.cos(theta);
+  const endY = pivotY - length * Math.sin(theta);
+
+  ctx.save();
+
+  // baseline
+  ctx.strokeStyle = "rgba(37, 99, 235, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pivotX, pivotY);
+  ctx.lineTo(pivotX + 32, pivotY);
+  ctx.stroke();
+
+  // arrow shaft
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(pivotX, pivotY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+
+  // arrowhead
+  const screenAngle = -theta;
+  const headLength = 8;
+  const wing = Math.PI / 7;
+
+  ctx.fillStyle = "#2563eb";
+  ctx.beginPath();
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(
+    endX - headLength * Math.cos(screenAngle - wing),
+    endY - headLength * Math.sin(screenAngle - wing),
+  );
+  ctx.lineTo(
+    endX - headLength * Math.cos(screenAngle + wing),
+    endY - headLength * Math.sin(screenAngle + wing),
+  );
+  ctx.closePath();
+  ctx.fill();
+
+  // angle label
+  ctx.font = "12px system-ui";
+  ctx.fillStyle = "#1d4ed8";
+  ctx.fillText(`${Math.round(angle)}°`, endX + 6, endY - 4);
+
+  ctx.restore();
+}
+
 function drawTrail(scale, groundY) {
   if (shot.trail.length < 2) return;
 
@@ -621,7 +697,6 @@ syncControls(speedSlider, speedInput, 1);
 
 launchButton.addEventListener("click", launchProjectile);
 newRoundButton.addEventListener("click", generateRound);
-
 window.addEventListener("resize", drawScene);
 
 // ---------- START ----------
