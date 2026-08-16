@@ -1,48 +1,28 @@
 "use strict";
 
-// ============================================================
-// Projectile Motion Artillery
-// Vanilla JavaScript — no libraries required
-// ============================================================
+// ---------- GAME SETTINGS ----------
 
-// Easy-to-adjust game constants
+const G = 9.8;
+const MAX_ATTEMPTS = 3;
+const TARGET_TOLERANCE = 1;
 
-const GRAVITY = 9.8;
-const MAX_ATTEMPTS = 2;
-const TARGET_TOLERANCE = 1.0; // meters on either side of target center
+const ANGLE_MIN = 20;
+const ANGLE_MAX = 70;
+const SPEED_MIN = 15;
+const SPEED_MAX = 30;
 
-const TARGET_DISTANCE_MIN = 30;
-const TARGET_DISTANCE_MAX = 60;
-const HIDDEN_ANGLE_MIN = 30;
-const HIDDEN_ANGLE_MAX = 60;
-const OVERALL_SPEED_MIN = 15;
-const OVERALL_SPEED_MAX = 30;
-
-const WALL_POSITION_MIN_FRACTION = 0.25;
-const WALL_POSITION_MAX_FRACTION = 0.7;
-const WALL_HEIGHT_MIN = 2.5;
-const WALL_HEIGHT_MAX = 12;
-const WALL_HEIGHT_MIN_FRACTION = 0.5;
-const WALL_HEIGHT_MAX_FRACTION = 0.78;
-
-const ANGLE_RANGE_MIN_WIDTH = 16;
-const ANGLE_RANGE_MAX_WIDTH = 28;
-const SPEED_RANGE_MIN_WIDTH = 6;
-const SPEED_RANGE_MAX_WIDTH = 10;
+const TARGET_MIN = 30;
+const TARGET_MAX = 60;
 
 const ANIMATION_SPEED = 1.7;
-const MAX_GENERATION_TRIES = 5000;
-const TRAIL_INTERVAL = 0.05;
 
-// DOM references
+// ---------- ELEMENTS ----------
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const wallInfo = document.getElementById("wallInfo");
 const targetInfo = document.getElementById("targetInfo");
-const angleRangeInfo = document.getElementById("angleRangeInfo");
-const speedRangeInfo = document.getElementById("speedRangeInfo");
 const attemptsRemaining = document.getElementById("attemptsRemaining");
 
 const angleSlider = document.getElementById("angleSlider");
@@ -52,1182 +32,565 @@ const speedInput = document.getElementById("speedInput");
 
 const launchButton = document.getElementById("launchButton");
 const newRoundButton = document.getElementById("newRoundButton");
+
 const validationMessage = document.getElementById("validationMessage");
 const statusMessage = document.getElementById("statusMessage");
 const shotSummary = document.getElementById("shotSummary");
 
-// Game state
+// ---------- STATE ----------
 
-let currentRound = null;
-let attemptsUsed = 0;
-let animationRunning = false;
-let animationFrameId = null;
-let activeShot = null;
-let shotHistory = [];
+let round;
+let attempts = 0;
+let shot = null;
+let animationFrame = null;
 
-let view = {
-  width: 800,
-  height: 420,
-  dpr: 1,
-  left: 60,
-  right: 35,
-  top: 25,
-  groundY: 340,
-  scaleX: 1,
-  scaleY: 1,
-  maxX: 70,
-  maxY: 25,
-};
+// ---------- PHYSICS ----------
 
-// Utility functions
+function radians(degrees) {
+  return (degrees * Math.PI) / 180;
+}
 
-function randomBetween(min, max) {
+function velocityComponents(speed, angle) {
+  const theta = radians(angle);
+
+  return {
+    vx: speed * Math.cos(theta),
+    vy: speed * Math.sin(theta),
+  };
+}
+
+function positionAtTime(speed, angle, time) {
+  const { vx, vy } = velocityComponents(speed, angle);
+
+  return {
+    x: vx * time,
+    y: vy * time - 0.5 * G * time * time,
+  };
+}
+
+function flightTime(speed, angle) {
+  const { vy } = velocityComponents(speed, angle);
+  return (2 * vy) / G;
+}
+
+function range(speed, angle) {
+  const theta = radians(angle);
+  return (speed * speed * Math.sin(2 * theta)) / G;
+}
+
+function heightAtX(x, speed, angle) {
+  const theta = radians(angle);
+  const cos = Math.cos(theta);
+
+  return x * Math.tan(theta) - (G * x * x) / (2 * speed * speed * cos * cos);
+}
+
+// ---------- RANDOM ROUND ----------
+
+function random(min, max) {
   return min + Math.random() * (max - min);
 }
 
 function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(random(min, max + 1));
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+function round1(value) {
+  return Math.round(value * 10) / 10;
 }
 
-function degreesToRadians(degrees) {
-  return (degrees * Math.PI) / 180;
-}
+function generateRound() {
+  cancelShot();
 
-function roundTo(value, decimals = 1) {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
-}
+  while (true) {
+    // Start with a guaranteed-valid shot.
+    const solutionAngle = randomInt(30, 60);
+    const solutionSpeed = round1(random(18, 28));
 
-function format(value, decimals = 1) {
-  return Number(value).toFixed(decimals);
-}
+    const targetDistance = round1(range(solutionSpeed, solutionAngle));
 
-// Projectile-motion calculations
-
-function calculateProjectilePosition(speed, angleDegrees, time) {
-  const angle = degreesToRadians(angleDegrees);
-
-  const vx = speed * Math.cos(angle);
-  const vy = speed * Math.sin(angle);
-
-  return {
-    x: vx * time,
-    y: vy * time - 0.5 * GRAVITY * time * time,
-    vx,
-    vy,
-  };
-}
-
-function calculateFlightTime(speed, angleDegrees) {
-  const angle = degreesToRadians(angleDegrees);
-  const vy = speed * Math.sin(angle);
-
-  return (2 * vy) / GRAVITY;
-}
-
-function calculateRange(speed, angleDegrees) {
-  const angle = degreesToRadians(angleDegrees);
-
-  return (speed * speed * Math.sin(2 * angle)) / GRAVITY;
-}
-
-function calculatePeakHeight(speed, angleDegrees) {
-  const angle = degreesToRadians(angleDegrees);
-  const vy = speed * Math.sin(angle);
-
-  return (vy * vy) / (2 * GRAVITY);
-}
-
-function calculateHeightAtX(x, speed, angleDegrees) {
-  const angle = degreesToRadians(angleDegrees);
-  const cos = Math.cos(angle);
-
-  if (Math.abs(cos) < 1e-9) {
-    return -Infinity;
-  }
-
-  return (
-    x * Math.tan(angle) - (GRAVITY * x * x) / (2 * speed * speed * cos * cos)
-  );
-}
-
-function checkWallCollision(speed, angleDegrees) {
-  const landingX = calculateRange(speed, angleDegrees);
-
-  // If the projectile lands before the wall,
-  // it never physically reaches the wall.
-  if (landingX < currentRound.wallDistance) {
-    return {
-      reachesWall: false,
-      hit: false,
-      time: null,
-      height: null,
-    };
-  }
-
-  const angle = degreesToRadians(angleDegrees);
-  const vx = speed * Math.cos(angle);
-
-  if (vx <= 0) {
-    return {
-      reachesWall: false,
-      hit: false,
-      time: null,
-      height: null,
-    };
-  }
-
-  const time = currentRound.wallDistance / vx;
-
-  const position = calculateProjectilePosition(speed, angleDegrees, time);
-
-  return {
-    reachesWall: true,
-
-    // Exactly equal to wall height
-    // counts as hitting the wall.
-    hit: position.y <= currentRound.wallHeight,
-
-    time,
-    height: position.y,
-  };
-}
-
-function evaluateLanding(landingX) {
-  const targetMin = currentRound.targetDistance - TARGET_TOLERANCE;
-
-  const targetMax = currentRound.targetDistance + TARGET_TOLERANCE;
-
-  // Exactly on either boundary counts as a hit.
-  if (landingX >= targetMin && landingX <= targetMax) {
-    return "HIT";
-  }
-
-  if (landingX < targetMin) {
-    return "SHORT";
-  }
-
-  return "OVERSHOT";
-}
-
-// Guaranteed-solvable round generation
-
-function generateSolvableScenario() {
-  for (let i = 0; i < MAX_GENERATION_TRIES; i += 1) {
-    /*
-      Generate the hidden valid shot first.
-
-      The hidden speed uses 0.1 m/s increments,
-      so the guaranteed solution can actually
-      be entered using the student's controls.
-    */
-
-    const hiddenAngle = randomInt(HIDDEN_ANGLE_MIN, HIDDEN_ANGLE_MAX);
-
-    const hiddenSpeed = roundTo(
-      randomBetween(OVERALL_SPEED_MIN, OVERALL_SPEED_MAX),
-      1,
-    );
-
-    /*
-      Because launch and landing heights are both zero:
-
-      R = v² sin(2θ) / g
-    */
-
-    const targetDistance = calculateRange(hiddenSpeed, hiddenAngle);
-
-    if (
-      targetDistance < TARGET_DISTANCE_MIN ||
-      targetDistance > TARGET_DISTANCE_MAX
-    ) {
+    if (targetDistance < TARGET_MIN || targetDistance > TARGET_MAX) {
       continue;
     }
 
-    // Put the wall somewhere between
-    // the catapult and the target.
-    const wallDistance =
-      targetDistance *
-      randomBetween(WALL_POSITION_MIN_FRACTION, WALL_POSITION_MAX_FRACTION);
+    const wallDistance = round1(targetDistance * random(0.3, 0.65));
 
-    /*
-      Determine the height of the known-valid
-      trajectory where it reaches the wall.
-    */
-
-    const validHeightAtWall = calculateHeightAtX(
+    const solutionHeight = heightAtX(
       wallDistance,
-      hiddenSpeed,
-      hiddenAngle,
+      solutionSpeed,
+      solutionAngle,
     );
 
-    if (!Number.isFinite(validHeightAtWall) || validHeightAtWall <= 0) {
+    const wallHeight = round1(solutionHeight * random(0.55, 0.75));
+
+    if (wallHeight < 2.5 || wallHeight > 12) {
       continue;
     }
 
-    /*
-      Build the wall well below the valid
-      trajectory so the hidden solution does
-      not merely scrape it.
-    */
-
-    const wallHeight =
-      validHeightAtWall *
-      randomBetween(WALL_HEIGHT_MIN_FRACTION, WALL_HEIGHT_MAX_FRACTION);
-
-    if (wallHeight < WALL_HEIGHT_MIN || wallHeight > WALL_HEIGHT_MAX) {
-      continue;
-    }
-
-    // --------------------------
-    // Allowed angle range
-    // --------------------------
-
-    const angleWidth = randomInt(ANGLE_RANGE_MIN_WIDTH, ANGLE_RANGE_MAX_WIDTH);
-
-    const angleLeft = randomInt(6, angleWidth - 6);
-
-    let angleMin = hiddenAngle - angleLeft;
-
-    let angleMax = angleMin + angleWidth;
-
-    if (angleMin < 15) {
-      angleMax += 15 - angleMin;
-      angleMin = 15;
-    }
-
-    if (angleMax > 75) {
-      angleMin -= angleMax - 75;
-      angleMax = 75;
-    }
-
-    angleMin = Math.round(angleMin);
-    angleMax = Math.round(angleMax);
-
-    // --------------------------
-    // Allowed speed range
-    // --------------------------
-
-    const speedWidth = randomInt(SPEED_RANGE_MIN_WIDTH, SPEED_RANGE_MAX_WIDTH);
-
-    const speedLeft = randomBetween(2.5, speedWidth - 2.5);
-
-    let speedMin = Math.floor(hiddenSpeed - speedLeft);
-
-    let speedMax = Math.ceil(speedMin + speedWidth);
-
-    if (speedMin < OVERALL_SPEED_MIN) {
-      speedMax += OVERALL_SPEED_MIN - speedMin;
-
-      speedMin = OVERALL_SPEED_MIN;
-    }
-
-    if (speedMax > OVERALL_SPEED_MAX) {
-      speedMin -= speedMax - OVERALL_SPEED_MAX;
-
-      speedMax = OVERALL_SPEED_MAX;
-    }
-
-    speedMin = Math.max(OVERALL_SPEED_MIN, speedMin);
-
-    speedMax = Math.min(OVERALL_SPEED_MAX, speedMax);
-
-    /*
-      Final solvability check:
-      the hidden solution must fall inside
-      both displayed ranges.
-    */
-
-    if (
-      hiddenAngle < angleMin ||
-      hiddenAngle > angleMax ||
-      hiddenSpeed < speedMin ||
-      hiddenSpeed > speedMax
-    ) {
-      continue;
-    }
-
-    return {
+    round = {
       targetDistance,
       wallDistance,
       wallHeight,
-
-      angleMin,
-      angleMax,
-      speedMin,
-      speedMax,
-
-      // Never displayed to students.
-      hiddenAngle,
-      hiddenSpeed,
     };
+
+    break;
   }
 
-  throw new Error("Could not generate a solvable round.");
-}
+  attempts = 0;
+  shot = null;
 
-// Round management
+  angleSlider.value = 45;
+  angleInput.value = 45;
 
-function generateRound() {
-  cancelAnimation();
+  speedSlider.value = 22.5;
+  speedInput.value = "22.5";
 
-  currentRound = generateSolvableScenario();
+  wallInfo.textContent =
+    `${round.wallDistance.toFixed(1)} m away, ` +
+    `${round.wallHeight.toFixed(1)} m tall`;
 
-  attemptsUsed = 0;
-  shotHistory = [];
-  activeShot = null;
+  targetInfo.textContent = `${round.targetDistance.toFixed(1)} m away`;
 
-  configureControls();
-  updateUI();
-  renderShotHistory();
+  shotSummary.innerHTML = `
+    <p class="summary-placeholder">
+      Your launch data will appear here after the shot.
+    </p>
+  `;
+
+  validationMessage.textContent = "";
 
   setStatus("Read the scenario, calculate your shot, then launch.", "neutral");
 
-  validationMessage.textContent = "";
-
-  newRoundButton.disabled = true;
-  launchButton.disabled = false;
-
-  setControlsDisabled(false);
-
+  enableControls();
+  updateAttempts();
   drawScene();
 }
 
-function resetRound() {
-  generateRound();
-}
+// ---------- CONTROLS ----------
 
-// Controls
-
-function configureControls() {
-  angleSlider.min = currentRound.angleMin;
-
-  angleSlider.max = currentRound.angleMax;
-
-  angleSlider.step = 1;
-
-  angleInput.min = currentRound.angleMin;
-
-  angleInput.max = currentRound.angleMax;
-
-  angleInput.step = 1;
-
-  speedSlider.min = currentRound.speedMin;
-
-  speedSlider.max = currentRound.speedMax;
-
-  speedSlider.step = 0.1;
-
-  speedInput.min = currentRound.speedMin;
-
-  speedInput.max = currentRound.speedMax;
-
-  speedInput.step = 0.1;
-
-  const startingAngle = Math.round(
-    (currentRound.angleMin + currentRound.angleMax) / 2,
-  );
-
-  const startingSpeed = roundTo(
-    (currentRound.speedMin + currentRound.speedMax) / 2,
-    1,
-  );
-
-  angleSlider.value = startingAngle;
-
-  angleInput.value = startingAngle;
-
-  speedSlider.value = startingSpeed;
-
-  speedInput.value = startingSpeed.toFixed(1);
-}
-
-function updateUI() {
-  wallInfo.textContent =
-    `${format(currentRound.wallDistance)} m away, ` +
-    `${format(currentRound.wallHeight)} m tall`;
-
-  targetInfo.textContent = `${format(currentRound.targetDistance)} m away`;
-
-  angleRangeInfo.textContent = `${currentRound.angleMin}°–${currentRound.angleMax}°`;
-
-  speedRangeInfo.textContent = `${currentRound.speedMin}–${currentRound.speedMax} m/s`;
-
-  const remaining = Math.max(0, MAX_ATTEMPTS - attemptsUsed);
-
-  attemptsRemaining.textContent = `Attempts remaining: ${remaining}`;
-}
-
-function setStatus(message, type) {
-  statusMessage.textContent = message;
-
-  statusMessage.className = "status-message";
-
-  if (type === "hit") {
-    statusMessage.classList.add("status-hit");
-  } else if (type === "miss") {
-    statusMessage.classList.add("status-miss");
-  } else if (type === "ready") {
-    statusMessage.classList.add("status-ready");
-  } else {
-    statusMessage.classList.add("status-neutral");
-  }
-}
-
-function setControlsDisabled(disabled) {
-  angleSlider.disabled = disabled;
-  angleInput.disabled = disabled;
-  speedSlider.disabled = disabled;
-  speedInput.disabled = disabled;
-}
-
-function syncSliderAndNumber(slider, numberInput, decimals) {
+function syncControls(slider, input, decimals = 0) {
   slider.addEventListener("input", () => {
-    const value = Number(slider.value);
-
-    numberInput.value =
-      decimals === 0 ? String(value) : value.toFixed(decimals);
+    input.value =
+      decimals === 0 ? slider.value : Number(slider.value).toFixed(decimals);
   });
 
-  numberInput.addEventListener("input", () => {
-    const value = Number(numberInput.value);
-
-    if (Number.isFinite(value)) {
-      slider.value = clamp(value, Number(slider.min), Number(slider.max));
-    }
-  });
-
-  numberInput.addEventListener("change", () => {
-    const min = Number(numberInput.min);
-
-    const max = Number(numberInput.max);
-
-    const value = Number(numberInput.value);
+  input.addEventListener("change", () => {
+    let value = Number(input.value);
 
     if (!Number.isFinite(value)) {
-      const sliderValue = Number(slider.value);
-
-      numberInput.value =
-        decimals === 0 ? String(sliderValue) : sliderValue.toFixed(decimals);
-
-      return;
+      value = Number(slider.value);
     }
 
-    const safeValue = clamp(value, min, max);
+    value = Math.max(Number(input.min), Math.min(Number(input.max), value));
 
-    slider.value = safeValue;
+    if (decimals === 0) {
+      value = Math.round(value);
+    }
 
-    numberInput.value =
-      decimals === 0
-        ? String(Math.round(safeValue))
-        : safeValue.toFixed(decimals);
+    slider.value = value;
+    input.value = decimals === 0 ? value : value.toFixed(decimals);
   });
 }
 
-function validateInputs() {
-  const angle = Number(angleInput.value);
-
-  const speed = Number(speedInput.value);
-
-  if (!Number.isFinite(angle) || !Number.isFinite(speed)) {
-    return {
-      valid: false,
-      message: "Enter a valid angle and launch speed.",
-    };
-  }
-
-  if (angle < currentRound.angleMin || angle > currentRound.angleMax) {
-    return {
-      valid: false,
-      message:
-        `Angle must be between ` +
-        `${currentRound.angleMin}° and ` +
-        `${currentRound.angleMax}°.`,
-    };
-  }
-
-  if (speed < currentRound.speedMin || speed > currentRound.speedMax) {
-    return {
-      valid: false,
-      message:
-        `Speed must be between ` +
-        `${currentRound.speedMin} and ` +
-        `${currentRound.speedMax} m/s.`,
-    };
-  }
-
-  return {
-    valid: true,
-    angle,
-    speed,
-  };
+function updateAttempts() {
+  attemptsRemaining.textContent = `Attempts remaining: ${Math.max(0, MAX_ATTEMPTS - attempts)}`;
 }
 
-// Shot summary
-
-function renderShotHistory() {
-  if (shotHistory.length === 0) {
-    shotSummary.innerHTML =
-      '<p class="summary-placeholder">' +
-      "Your launch data will appear here after the shot." +
-      "</p>";
-
-    return;
-  }
-
-  shotSummary.innerHTML = shotHistory
-    .map((shot, index) => {
-      const wallHeightText =
-        shot.heightAtWall === null
-          ? "Did not reach wall"
-          : `${format(shot.heightAtWall)} m`;
-
-      const landingText =
-        shot.result === "HIT WALL" ? "—" : `${format(shot.landingX)} m`;
-
-      return `
-            <article class="summary-card">
-
-              <div class="summary-cell">
-                <span>Attempt</span>
-                <strong>${index + 1}</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>Angle</span>
-                <strong>${format(shot.angle)}°</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>Speed</span>
-                <strong>${format(shot.speed)} m/s</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>vx</span>
-                <strong>${format(shot.vx)} m/s</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>vy</span>
-                <strong>${format(shot.vy)} m/s</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>Height at wall</span>
-                <strong>${wallHeightText}</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>Landing</span>
-                <strong>${landingText}</strong>
-              </div>
-
-              <div class="summary-cell">
-                <span>Result</span>
-                <strong class="summary-result">
-                  ${shot.result}
-                </strong>
-              </div>
-
-            </article>
-          `;
-    })
-    .join("");
+function disableControls() {
+  angleSlider.disabled = true;
+  angleInput.disabled = true;
+  speedSlider.disabled = true;
+  speedInput.disabled = true;
+  launchButton.disabled = true;
+  newRoundButton.disabled = true;
 }
 
-// Launch
+function enableControls() {
+  angleSlider.disabled = false;
+  angleInput.disabled = false;
+  speedSlider.disabled = false;
+  speedInput.disabled = false;
+
+  launchButton.disabled = attempts >= MAX_ATTEMPTS;
+  newRoundButton.disabled = false;
+}
+
+// ---------- LAUNCH ----------
 
 function launchProjectile() {
-  if (animationRunning || !currentRound) {
+  if (shot || attempts >= MAX_ATTEMPTS) {
     return;
   }
 
-  if (attemptsUsed >= MAX_ATTEMPTS) {
-    return;
-  }
+  const angle = Number(angleInput.value);
+  const speed = Number(speedInput.value);
 
-  const input = validateInputs();
-
-  if (!input.valid) {
-    validationMessage.textContent = input.message;
-
+  if (
+    !Number.isFinite(angle) ||
+    !Number.isFinite(speed) ||
+    angle < ANGLE_MIN ||
+    angle > ANGLE_MAX ||
+    speed < SPEED_MIN ||
+    speed > SPEED_MAX
+  ) {
+    validationMessage.textContent =
+      "Enter an angle from 20°–70° and a speed from 15–30 m/s.";
     return;
   }
 
   validationMessage.textContent = "";
+  attempts++;
+  updateAttempts();
 
-  const angle = input.angle;
-  const speed = input.speed;
+  const { vx, vy } = velocityComponents(speed, angle);
 
-  const radians = degreesToRadians(angle);
+  const landing = range(speed, angle);
+  const totalTime = flightTime(speed, angle);
 
-  const vx = speed * Math.cos(radians);
+  const wallHeight =
+    landing >= round.wallDistance
+      ? heightAtX(round.wallDistance, speed, angle)
+      : null;
 
-  const vy = speed * Math.sin(radians);
+  const wallHit = wallHeight !== null && wallHeight <= round.wallHeight;
 
-  const landingX = calculateRange(speed, angle);
+  const wallTime = wallHit ? round.wallDistance / vx : null;
 
-  const flightTime = calculateFlightTime(speed, angle);
-
-  const wall = checkWallCollision(speed, angle);
-
-  let result;
-
-  if (wall.hit) {
-    result = "HIT WALL";
-  } else {
-    result = evaluateLanding(landingX);
-  }
-
-  attemptsUsed += 1;
-  updateUI();
-
-  activeShot = {
+  shot = {
     angle,
     speed,
     vx,
     vy,
-    landingX,
-    flightTime,
-    wall,
-    result,
-
-    startTimestamp: null,
-    elapsed: 0,
-
-    point: {
-      x: 0,
-      y: 0,
-    },
-
+    landing,
+    wallHeight,
+    wallHit,
+    totalTime,
+    stopTime: wallHit ? wallTime : totalTime,
+    startTime: null,
+    time: 0,
     trail: [],
-    lastTrailTime: -Infinity,
   };
 
-  animationRunning = true;
-
-  setControlsDisabled(true);
-
-  launchButton.disabled = true;
-  newRoundButton.disabled = true;
-
+  disableControls();
   setStatus("Projectile in flight…", "neutral");
 
-  animationFrameId = requestAnimationFrame(animateProjectile);
+  animationFrame = requestAnimationFrame(animate);
 }
 
-// Projectile animation
+// ---------- ANIMATION ----------
 
-function animateProjectile(timestamp) {
-  if (!animationRunning || !activeShot) {
-    return;
+function animate(timestamp) {
+  if (!shot) return;
+
+  if (shot.startTime === null) {
+    shot.startTime = timestamp;
   }
 
-  if (activeShot.startTimestamp === null) {
-    activeShot.startTimestamp = timestamp;
-  }
-
-  const realElapsed = (timestamp - activeShot.startTimestamp) / 1000;
-
-  const simulationTime = realElapsed * ANIMATION_SPEED;
-
-  let stopTime = activeShot.flightTime;
-
-  if (activeShot.wall.hit) {
-    stopTime = Math.min(stopTime, activeShot.wall.time);
-  }
-
-  activeShot.elapsed = Math.min(simulationTime, stopTime);
-
-  const point = calculateProjectilePosition(
-    activeShot.speed,
-    activeShot.angle,
-    activeShot.elapsed,
+  shot.time = Math.min(
+    ((timestamp - shot.startTime) / 1000) * ANIMATION_SPEED,
+    shot.stopTime,
   );
 
-  activeShot.point = {
-    x: point.x,
-    y: Math.max(0, point.y),
-  };
+  if (shot.trail.length === 0 || shot.time - shot.trail.at(-1).time > 0.05) {
+    const point = positionAtTime(shot.speed, shot.angle, shot.time);
 
-  if (activeShot.elapsed - activeShot.lastTrailTime >= TRAIL_INTERVAL) {
-    activeShot.trail.push({
-      ...activeShot.point,
+    shot.trail.push({
+      time: shot.time,
+      x: point.x,
+      y: Math.max(0, point.y),
     });
-
-    activeShot.lastTrailTime = activeShot.elapsed;
   }
 
   drawScene();
 
-  if (simulationTime >= stopTime) {
+  if (shot.time >= shot.stopTime) {
     finishShot();
     return;
   }
 
-  animationFrameId = requestAnimationFrame(animateProjectile);
+  animationFrame = requestAnimationFrame(animate);
 }
 
-// End of shot
+// ---------- RESULTS ----------
 
 function finishShot() {
-  const shot = {
-    angle: activeShot.angle,
-    speed: activeShot.speed,
-    vx: activeShot.vx,
-    vy: activeShot.vy,
+  cancelAnimationFrame(animationFrame);
+  animationFrame = null;
 
-    heightAtWall: activeShot.wall.reachesWall ? activeShot.wall.height : null,
+  let result;
 
-    landingX: activeShot.landingX,
+  if (shot.wallHit) {
+    result = "HIT WALL";
 
-    result: activeShot.result,
-  };
-
-  shotHistory.push(shot);
-
-  renderShotHistory();
-
-  if (activeShot.result === "HIT WALL") {
     setStatus(
-      `Hit the wall! ` +
-        `Projectile height at wall: ` +
-        `${format(activeShot.wall.height)} m. ` +
-        `Wall height: ` +
-        `${format(currentRound.wallHeight)} m.`,
+      `Hit the wall! Projectile height: ` +
+        `${shot.wallHeight.toFixed(1)} m. ` +
+        `Wall height: ${round.wallHeight.toFixed(1)} m.`,
       "miss",
     );
-  } else if (activeShot.result === "HIT") {
+  } else if (
+    Math.abs(shot.landing - round.targetDistance) <= TARGET_TOLERANCE
+  ) {
+    result = "HIT";
+
     setStatus(
-      `Direct hit! ` +
-        `Landing position: ` +
-        `${format(activeShot.landingX)} m. ` +
-        `Target center: ` +
-        `${format(currentRound.targetDistance)} m.`,
+      `Direct hit! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
       "hit",
     );
-  } else if (activeShot.result === "SHORT") {
+  } else if (shot.landing < round.targetDistance - TARGET_TOLERANCE) {
+    result = "SHORT";
+
     setStatus(
-      `Short! ` +
-        `Landing position: ` +
-        `${format(activeShot.landingX)} m. ` +
-        `Target center: ` +
-        `${format(currentRound.targetDistance)} m.`,
+      `Short! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
       "miss",
     );
   } else {
+    result = "OVERSHOT";
+
     setStatus(
-      `Overshot! ` +
-        `Landing position: ` +
-        `${format(activeShot.landingX)} m. ` +
-        `Target center: ` +
-        `${format(currentRound.targetDistance)} m.`,
+      `Overshot! Landing position: ` + `${shot.landing.toFixed(1)} m.`,
       "miss",
     );
   }
 
-  animationRunning = false;
-  animationFrameId = null;
+  addSummary(result);
 
-  const roundWon = activeShot.result === "HIT";
+  const hit = result === "HIT";
 
-  const roundOver = roundWon || attemptsUsed >= MAX_ATTEMPTS;
+  shot = null;
 
-  if (roundOver) {
-    setControlsDisabled(true);
-
+  if (hit || attempts >= MAX_ATTEMPTS) {
+    angleSlider.disabled = true;
+    angleInput.disabled = true;
+    speedSlider.disabled = true;
+    speedInput.disabled = true;
     launchButton.disabled = true;
 
+    // A new round can always be started once the shot is finished.
     newRoundButton.disabled = false;
   } else {
-    setControlsDisabled(false);
-
-    launchButton.disabled = false;
-
-    newRoundButton.disabled = true;
+    enableControls();
   }
 
   drawScene();
 }
 
-function cancelAnimation() {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
+function addSummary(result) {
+  const attemptNumber = attempts;
+
+  if (attemptNumber === 1) {
+    shotSummary.innerHTML = "";
   }
 
-  animationFrameId = null;
-  animationRunning = false;
-  activeShot = null;
+  const wallText =
+    shot.wallHeight === null
+      ? "Did not reach wall"
+      : `${shot.wallHeight.toFixed(1)} m`;
+
+  shotSummary.insertAdjacentHTML(
+    "beforeend",
+    `
+      <article class="summary-card">
+        <div class="summary-cell">
+          <span>Attempt</span>
+          <strong>${attemptNumber}</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>Angle</span>
+          <strong>${shot.angle.toFixed(1)}°</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>Speed</span>
+          <strong>${shot.speed.toFixed(1)} m/s</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>vx</span>
+          <strong>${shot.vx.toFixed(1)} m/s</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>vy</span>
+          <strong>${shot.vy.toFixed(1)} m/s</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>Height at wall</span>
+          <strong>${wallText}</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>Landing</span>
+          <strong>${shot.wallHit ? "—" : `${shot.landing.toFixed(1)} m`}</strong>
+        </div>
+
+        <div class="summary-cell">
+          <span>Result</span>
+          <strong>${result}</strong>
+        </div>
+      </article>
+    `,
+  );
 }
 
-// Canvas sizing
+function setStatus(message, type) {
+  statusMessage.textContent = message;
+  statusMessage.className = `status-message status-${type}`;
+}
 
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-
-  const dpr = window.devicePixelRatio || 1;
-
-  const width = Math.max(320, rect.width || 800);
-
-  const height = Math.max(300, rect.height || 420);
-
-  const pixelWidth = Math.round(width * dpr);
-
-  const pixelHeight = Math.round(height * dpr);
-
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth;
-
-    canvas.height = pixelHeight;
+function cancelShot() {
+  if (animationFrame !== null) {
+    cancelAnimationFrame(animationFrame);
   }
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  view.width = width;
-  view.height = height;
-  view.dpr = dpr;
+  animationFrame = null;
+  shot = null;
 }
 
-// World-to-screen scaling
+// ---------- CANVAS ----------
 
-function calculateView() {
-  const candidateAngles = [
-    currentRound.angleMin,
-
-    currentRound.angleMax,
-
-    (currentRound.angleMin + currentRound.angleMax) / 2,
-
-    clamp(45, currentRound.angleMin, currentRound.angleMax),
-  ];
-
-  let maxRange = currentRound.targetDistance + TARGET_TOLERANCE + 5;
-
-  let maxHeight = currentRound.wallHeight + 4;
-
-  for (const angle of candidateAngles) {
-    maxRange = Math.max(maxRange, calculateRange(currentRound.speedMax, angle));
-
-    maxHeight = Math.max(
-      maxHeight,
-      calculatePeakHeight(currentRound.speedMax, angle),
-    );
-  }
-
-  view.left = Math.max(50, view.width * 0.07);
-
-  view.right = Math.max(25, view.width * 0.04);
-
-  view.top = Math.max(20, view.height * 0.06);
-
-  view.groundY = view.height - Math.max(58, view.height * 0.16);
-
-  view.maxX = maxRange + 3;
-
-  view.maxY = maxHeight * 1.2;
-
-  view.scaleX = (view.width - view.left - view.right) / view.maxX;
-
-  view.scaleY = (view.groundY - view.top) / view.maxY;
-}
-
-function worldToCanvas(x, y) {
+function worldToScreen(x, y, scale, groundY) {
   return {
-    x: view.left + x * view.scaleX,
-
-    y: view.groundY - y * view.scaleY,
+    x: 55 + x * scale,
+    y: groundY - y * scale,
   };
 }
 
-// Main drawing function
-
 function drawScene() {
-  if (!currentRound) {
-    return;
-  }
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
 
-  resizeCanvas();
-  calculateView();
+  const width = Math.max(320, rect.width);
+  const height = Math.max(300, rect.height);
 
-  ctx.clearRect(0, 0, view.width, view.height);
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
 
-  drawSky();
-  drawGround();
-  drawDistanceTicks();
-  drawTarget();
-  drawWall();
-  drawCatapult();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  if (activeShot) {
-    drawTrail(activeShot.trail);
+  const groundY = height - 60;
 
-    drawProjectile(activeShot.point);
-  }
-}
+  // Leave room beyond the target for overshoots.
+  const worldWidth = Math.max(70, round.targetDistance + 12);
 
-// Sky
+  const scale = (width - 90) / worldWidth;
 
-function drawSky() {
-  const sky = ctx.createLinearGradient(0, 0, 0, view.groundY);
+  // Sky
+  ctx.fillStyle = "#d9f2ff";
+  ctx.fillRect(0, 0, width, groundY);
 
-  sky.addColorStop(0, "#72c5f5");
-
-  sky.addColorStop(1, "#d9f2ff");
-
-  ctx.fillStyle = sky;
-
-  ctx.fillRect(0, 0, view.width, view.groundY);
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-
-  drawCloud(view.width * 0.22, view.height * 0.16, 0.9);
-
-  drawCloud(view.width * 0.72, view.height * 0.12, 1.1);
-}
-
-function drawCloud(x, y, scale) {
-  ctx.beginPath();
-
-  ctx.arc(x, y, 17 * scale, 0, Math.PI * 2);
-
-  ctx.arc(x + 22 * scale, y - 7 * scale, 22 * scale, 0, Math.PI * 2);
-
-  ctx.arc(x + 45 * scale, y, 16 * scale, 0, Math.PI * 2);
-
-  ctx.fill();
-}
-
-// Ground
-
-function drawGround() {
+  // Ground
   ctx.fillStyle = "#63a44e";
-
-  ctx.fillRect(0, view.groundY, view.width, 16);
+  ctx.fillRect(0, groundY, width, 15);
 
   ctx.fillStyle = "#8d643d";
+  ctx.fillRect(0, groundY + 15, width, height - groundY - 15);
 
-  ctx.fillRect(
-    0,
-    view.groundY + 16,
-    view.width,
-    view.height - view.groundY - 16,
+  drawTicks(scale, groundY, worldWidth);
+  drawTarget(scale, groundY);
+  drawWall(scale, groundY);
+  drawCatapult(55, groundY);
+
+  if (shot) {
+    drawTrail(scale, groundY);
+
+    const point = positionAtTime(shot.speed, shot.angle, shot.time);
+
+    drawProjectile(
+      worldToScreen(point.x, Math.max(0, point.y), scale, groundY),
+    );
+  }
+}
+
+function drawTicks(scale, groundY, worldWidth) {
+  ctx.font = "11px system-ui";
+  ctx.fillStyle = "#46505f";
+  ctx.strokeStyle = "#8b949f";
+
+  for (let x = 0; x <= worldWidth; x += 5) {
+    const point = worldToScreen(x, 0, scale, groundY);
+
+    ctx.beginPath();
+    ctx.moveTo(point.x, groundY - 4);
+    ctx.lineTo(point.x, groundY + 6);
+    ctx.stroke();
+
+    ctx.fillText(`${x} m`, point.x - 10, groundY + 25);
+  }
+}
+
+function drawWall(scale, groundY) {
+  const bottom = worldToScreen(round.wallDistance, 0, scale, groundY);
+
+  const top = worldToScreen(
+    round.wallDistance,
+    round.wallHeight,
+    scale,
+    groundY,
   );
 
-  ctx.strokeStyle = "#3f6f34";
-
-  ctx.lineWidth = 2;
-
-  ctx.beginPath();
-
-  ctx.moveTo(0, view.groundY);
-
-  ctx.lineTo(view.width, view.groundY);
-
-  ctx.stroke();
+  ctx.fillStyle = "#777f88";
+  ctx.fillRect(bottom.x - 9, top.y, 18, bottom.y - top.y);
 }
 
-// Distance markers
+function drawTarget(scale, groundY) {
+  const point = worldToScreen(round.targetDistance, 0, scale, groundY);
 
-function drawDistanceTicks() {
-  const step = view.maxX > 80 ? 10 : 5;
-
-  ctx.save();
-
-  ctx.font = "11px system-ui, sans-serif";
-
-  ctx.fillStyle = "rgba(23, 32, 51, 0.7)";
-
-  ctx.strokeStyle = "rgba(23, 32, 51, 0.25)";
-
-  for (let x = 0; x <= view.maxX; x += step) {
-    const point = worldToCanvas(x, 0);
-
-    ctx.beginPath();
-
-    ctx.moveTo(point.x, view.groundY - 5);
-
-    ctx.lineTo(point.x, view.groundY + 7);
-
-    ctx.stroke();
-
-    ctx.fillText(`${x} m`, point.x - 12, view.groundY + 28);
-  }
-
-  ctx.restore();
-}
-
-// Catapult
-
-function drawCatapult() {
-  const base = worldToCanvas(0, 0);
-
-  const x = base.x;
-  const y = base.y;
-
-  ctx.save();
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  // Wheels
-  ctx.fillStyle = "#4a3424";
-
+  ctx.fillStyle = "#c92f2f";
   ctx.beginPath();
-
-  ctx.arc(x + 8, y - 2, 11, 0, Math.PI * 2);
-
-  ctx.arc(x + 46, y - 2, 11, 0, Math.PI * 2);
-
+  ctx.arc(point.x, groundY - 5, 14, 0, Math.PI * 2);
   ctx.fill();
 
-  // Wooden base
+  ctx.fillStyle = "#f1d04b";
+  ctx.beginPath();
+  ctx.arc(point.x, groundY - 5, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#c92f2f";
+  ctx.beginPath();
+  ctx.arc(point.x, groundY - 5, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCatapult(x, y) {
   ctx.strokeStyle = "#704820";
-
-  ctx.lineWidth = 9;
-
-  ctx.beginPath();
-
-  ctx.moveTo(x - 5, y - 14);
-
-  ctx.lineTo(x + 56, y - 14);
-
-  ctx.stroke();
-
-  // Upright support
-  ctx.strokeStyle = "#8d5b2d";
-
   ctx.lineWidth = 7;
+  ctx.lineCap = "round";
 
   ctx.beginPath();
-
-  ctx.moveTo(x + 27, y - 14);
-
-  ctx.lineTo(x + 29, y - 50);
-
+  ctx.moveTo(x, y - 12);
+  ctx.lineTo(x + 48, y - 12);
   ctx.stroke();
 
-  // Throwing arm
   ctx.beginPath();
-
-  ctx.moveTo(x + 29, y - 43);
-
-  ctx.lineTo(x + 64, y - 72);
-
+  ctx.moveTo(x + 24, y - 12);
+  ctx.lineTo(x + 28, y - 46);
   ctx.stroke();
 
-  // Loaded boulder
-  ctx.fillStyle = "#4b4e54";
-
   ctx.beginPath();
+  ctx.moveTo(x + 28, y - 42);
+  ctx.lineTo(x + 58, y - 68);
+  ctx.stroke();
 
-  ctx.arc(x + 67, y - 75, 7, 0, Math.PI * 2);
-
+  ctx.fillStyle = "#4d5056";
+  ctx.beginPath();
+  ctx.arc(x + 61, y - 71, 7, 0, Math.PI * 2);
   ctx.fill();
-
-  ctx.restore();
 }
 
-// Wall
+function drawTrail(scale, groundY) {
+  if (shot.trail.length < 2) return;
 
-function drawWall() {
-  const bottom = worldToCanvas(currentRound.wallDistance, 0);
-
-  const top = worldToCanvas(currentRound.wallDistance, currentRound.wallHeight);
-
-  const width = Math.max(14, Math.min(24, view.scaleX * 1.1));
-
-  const height = bottom.y - top.y;
-
-  ctx.save();
-
-  ctx.fillStyle = "#7b838c";
-
-  ctx.fillRect(bottom.x - width / 2, top.y, width, height);
-
-  ctx.strokeStyle = "#545b63";
-
-  ctx.lineWidth = 1;
-
-  const brickHeight = 13;
-
-  for (let y = top.y + brickHeight; y < bottom.y; y += brickHeight) {
-    ctx.beginPath();
-
-    ctx.moveTo(bottom.x - width / 2, y);
-
-    ctx.lineTo(bottom.x + width / 2, y);
-
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-// Target
-
-function drawTarget() {
-  const center = worldToCanvas(currentRound.targetDistance, 0);
-
-  const radius = Math.max(10, Math.min(18, view.scaleX * TARGET_TOLERANCE));
-
-  const y = center.y - 5;
-
-  ctx.save();
-
-  // Outer red ring
-  ctx.fillStyle = "#c82f2f";
-
-  ctx.beginPath();
-
-  ctx.arc(center.x, y, radius, 0, Math.PI * 2);
-
-  ctx.fill();
-
-  // Gold ring
-  ctx.fillStyle = "#f4d34d";
-
-  ctx.beginPath();
-
-  ctx.arc(center.x, y, radius * 0.62, 0, Math.PI * 2);
-
-  ctx.fill();
-
-  // Bullseye
-  ctx.fillStyle = "#c82f2f";
-
-  ctx.beginPath();
-
-  ctx.arc(center.x, y, radius * 0.24, 0, Math.PI * 2);
-
-  ctx.fill();
-
-  ctx.restore();
-}
-
-// Projectile trail
-
-function drawTrail(trail) {
-  if (!trail || trail.length < 2) {
-    return;
-  }
-
-  ctx.save();
-
-  ctx.strokeStyle = "rgba(50, 60, 75, 0.35)";
-
+  ctx.strokeStyle = "#4c556566";
   ctx.lineWidth = 2;
-
-  ctx.setLineDash([5, 6]);
+  ctx.setLineDash([5, 5]);
 
   ctx.beginPath();
 
-  trail.forEach((point, index) => {
-    const p = worldToCanvas(point.x, point.y);
+  shot.trail.forEach((point, index) => {
+    const p = worldToScreen(point.x, point.y, scale, groundY);
 
     if (index === 0) {
       ctx.moveTo(p.x, p.y);
@@ -1237,63 +600,30 @@ function drawTrail(trail) {
   });
 
   ctx.stroke();
-
-  ctx.restore();
+  ctx.setLineDash([]);
 }
 
-// Projectile
-
 function drawProjectile(point) {
-  if (!point) {
-    return;
-  }
-
-  const p = worldToCanvas(point.x, point.y);
-
-  ctx.save();
-
   ctx.fillStyle = "#50535a";
-
-  ctx.strokeStyle = "#272a2f";
-
+  ctx.strokeStyle = "#22262b";
   ctx.lineWidth = 2;
 
   ctx.beginPath();
-
-  ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-
+  ctx.arc(point.x, point.y, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-
-  ctx.restore();
 }
 
-// Event listeners
+// ---------- EVENTS ----------
 
-syncSliderAndNumber(angleSlider, angleInput, 0);
-
-syncSliderAndNumber(speedSlider, speedInput, 1);
+syncControls(angleSlider, angleInput);
+syncControls(speedSlider, speedInput, 1);
 
 launchButton.addEventListener("click", launchProjectile);
+newRoundButton.addEventListener("click", generateRound);
 
-newRoundButton.addEventListener("click", resetRound);
+window.addEventListener("resize", drawScene);
 
-window.addEventListener("resize", () => {
-  drawScene();
-});
+// ---------- START ----------
 
-// Start game
-
-function initializeGame() {
-  try {
-    generateRound();
-  } catch (error) {
-    console.error(error);
-
-    setStatus(`Game failed to start: ${error.message}`, "miss");
-
-    launchButton.disabled = true;
-  }
-}
-
-initializeGame();
+generateRound();

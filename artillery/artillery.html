@@ -6,6 +6,7 @@
     <title>Projectile Motion Artillery</title>
     <link rel="stylesheet" href="style.css" />
   </head>
+
   <body>
     <main class="game-shell">
       <header class="game-header">
@@ -13,22 +14,14 @@
           <p class="eyebrow">2D Projectile Motion Practice</p>
           <h1>Artillery Lab</h1>
         </div>
-        <button
-          id="newRoundButton"
-          class="button button-secondary"
-          type="button"
-          disabled
-        >
-          New Round
-        </button>
       </header>
 
       <section class="scenario-panel" aria-labelledby="scenarioHeading">
         <div class="section-heading-row">
           <h2 id="scenarioHeading">Round Information</h2>
-          <strong id="attemptsRemaining" class="attempt-badge"
-            >Attempts remaining: 2</strong
-          >
+          <strong id="attemptsRemaining" class="attempt-badge">
+            Attempts remaining: 3
+          </strong>
         </div>
 
         <div class="scenario-grid">
@@ -36,17 +29,20 @@
             <span class="info-label">Wall</span>
             <strong id="wallInfo">—</strong>
           </div>
+
           <div class="info-card">
             <span class="info-label">Target</span>
             <strong id="targetInfo">—</strong>
           </div>
+
           <div class="info-card">
             <span class="info-label">Allowed angle</span>
-            <strong id="angleRangeInfo">—</strong>
+            <strong>20°–70°</strong>
           </div>
+
           <div class="info-card">
             <span class="info-label">Allowed speed</span>
-            <strong id="speedRangeInfo">—</strong>
+            <strong>15–30 m/s</strong>
           </div>
         </div>
       </section>
@@ -64,13 +60,24 @@
               <label for="angleInput">Angle</label>
               <span>degrees</span>
             </div>
+
             <div class="dual-control">
-              <input id="angleSlider" type="range" step="1" />
+              <input
+                id="angleSlider"
+                type="range"
+                min="20"
+                max="70"
+                step="1"
+                value="45"
+              />
+
               <input
                 id="angleInput"
                 type="number"
+                min="20"
+                max="70"
                 step="1"
-                inputmode="decimal"
+                value="45"
               />
             </div>
           </div>
@@ -80,13 +87,24 @@
               <label for="speedInput">Launch Speed</label>
               <span>m/s</span>
             </div>
+
             <div class="dual-control">
-              <input id="speedSlider" type="range" step="0.1" />
+              <input
+                id="speedSlider"
+                type="range"
+                min="15"
+                max="30"
+                step="0.1"
+                value="22.5"
+              />
+
               <input
                 id="speedInput"
                 type="number"
+                min="15"
+                max="30"
                 step="0.1"
-                inputmode="decimal"
+                value="22.5"
               />
             </div>
           </div>
@@ -96,6 +114,15 @@
           <button id="launchButton" class="button button-primary" type="button">
             Launch
           </button>
+
+          <button
+            id="newRoundButton"
+            class="button button-secondary"
+            type="button"
+          >
+            New Round
+          </button>
+
           <p
             id="validationMessage"
             class="validation-message"
@@ -107,6 +134,7 @@
 
       <section class="feedback-panel" aria-labelledby="feedbackHeading">
         <h2 id="feedbackHeading">Shot Feedback</h2>
+
         <div
           id="statusMessage"
           class="status-message status-neutral"
