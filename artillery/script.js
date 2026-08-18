@@ -595,9 +595,9 @@ function drawScene() {
 // ---------- DISTANCE MARKERS ----------
 
 function drawTicks(scale, groundY, worldWidth) {
-  ctx.font = "11px system-ui";
-  ctx.fillStyle = "#46505f";
-  ctx.strokeStyle = "#8b949f";
+  ctx.font = "14px system-ui";
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = "gray";
 
   for (let x = 0; x <= worldWidth; x += 5) {
     const point = worldToScreen(x, 0, scale, groundY);
@@ -636,19 +636,19 @@ function drawWall(scale, groundY) {
 function drawTarget(scale, groundY) {
   const point = worldToScreen(round.targetDistance, 0, scale, groundY);
 
-  ctx.fillStyle = "#c92f2f";
+  ctx.fillStyle = "red";
 
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 14, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#f1d04b";
+  ctx.fillStyle = "white";
 
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 8, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#c92f2f";
+  ctx.fillStyle = "red";
 
   ctx.beginPath();
   ctx.arc(point.x, groundY - 5, 3, 0, Math.PI * 2);
@@ -658,7 +658,7 @@ function drawTarget(scale, groundY) {
 // ---------- CATAPULT ----------
 
 function drawCatapult(x, y) {
-  ctx.strokeStyle = "#704820";
+  ctx.strokeStyle = "#742";
   ctx.lineWidth = 7;
   ctx.lineCap = "round";
 
@@ -669,19 +669,13 @@ function drawCatapult(x, y) {
 
   ctx.beginPath();
   ctx.moveTo(x + 24, y - 12);
-  ctx.lineTo(x + 28, y - 46);
+  ctx.lineTo(x + 28, y - 40);
   ctx.stroke();
 
   ctx.beginPath();
   ctx.moveTo(x + 28, y - 42);
-  ctx.lineTo(x + 58, y - 68);
+  ctx.lineTo(x + 8, y - 48);
   ctx.stroke();
-
-  ctx.fillStyle = "#4d5056";
-
-  ctx.beginPath();
-  ctx.arc(x + 61, y - 71, 7, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 // ---------- ANGLE INDICATOR ----------
@@ -693,7 +687,7 @@ function drawAngleIndicator(x, y, angle) {
   const pivotY = y - 42;
 
   const theta = radians(angle);
-  const length = 38;
+  const length = 75;
 
   const endX = pivotX + length * Math.cos(theta);
 
@@ -704,7 +698,7 @@ function drawAngleIndicator(x, y, angle) {
   // Horizontal reference
   ctx.strokeStyle = "rgba(37, 99, 235, 0.35)";
 
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3;
 
   ctx.beginPath();
   ctx.moveTo(pivotX, pivotY);
