@@ -10,25 +10,19 @@
   <body>
     <main class="game-shell">
       <header class="game-header">
-        <div>
-          <h1>Artillery Game</h1>
-        </div>
+        <h1>Artillery Game</h1>
       </header>
 
       <section class="scenario-panel">
         <div class="section-heading-row">
           <h2>Round Information</h2>
+
           <strong id="attemptsRemaining" class="attempt-badge">
             Attempts remaining: 3
           </strong>
         </div>
 
         <div class="scenario-grid">
-          <div class="info-card">
-            <span class="info-label">Wall</span>
-            <strong id="wallInfo">—</strong>
-          </div>
-
           <div class="info-card">
             <span class="info-label">Target</span>
             <strong id="targetInfo">—</strong>
@@ -42,6 +36,11 @@
           <div class="info-card">
             <span class="info-label">Solve For</span>
             <strong id="solveInfo">—</strong>
+          </div>
+
+          <div id="wallCard" class="info-card" hidden>
+            <span class="info-label">Wall</span>
+            <strong id="wallInfo">—</strong>
           </div>
         </div>
       </section>
@@ -69,7 +68,7 @@
 
           <div class="control-group">
             <div class="control-label-row">
-              <label for="speedInput">Launch Speed</label>
+              <label for="speedInput">Diagonal Launch Speed</label>
               <span>m/s</span>
             </div>
 
@@ -106,6 +105,11 @@
             New Round
           </button>
 
+          <label>
+            <input id="wallToggle" type="checkbox" />
+            Wall challenge
+          </label>
+
           <p id="validationMessage" class="validation-message"></p>
         </div>
       </section>
@@ -114,7 +118,7 @@
         <h2>Shot Feedback</h2>
 
         <div id="statusMessage" class="status-message status-neutral">
-          Read the scenario, calculate your shot, then launch.
+          Calculate the missing launch variable, then test your shot.
         </div>
 
         <div id="shotSummary" class="summary-list">
